@@ -19,7 +19,7 @@ class Game:
         self.screen.blit(pygame.transform.scale(self.field_surface, size), (0, 0))
 
     def get_click(self, mouse_pos):
-        res = self.field.get_click(mouse_pos[0] + self.shift[0], mouse_pos[1] + self.shift[1])
+        res = self.field.get_click(mouse_pos[0] - self.shift[0], mouse_pos[1] - self.shift[1])
         # pygame.draw.circle(self.field_surface, (0, 0, 0), (
         # res[0] * 64 + 32 * ((res[1] % 2) == 0), res[1] * 48), 2)
         return res
@@ -34,71 +34,98 @@ class Field:
         self.start = start
         self.hexagons = {"grass": pygame.transform.scale(pygame.image.load("grass.png"), (64, 64)),
                          "water": pygame.transform.scale(pygame.image.load("water.png"), (64, 64)),
+                         "castle": pygame.transform.scale(pygame.image.load("castle.png"),
+                                                          (64, 64)),
                          }
         self.screen = screen
         self.width = BASE_R // 2
         self.height = 48
-        self.center = (width / 2 - self.width) // 64 * 64, (height / 2 - self.width) // 64 * 64
+        self.center = width / 2 // 64 * 64, height / 2 // 48 * 48
         self.tiles = []
 
     def flip(self, shift=(0, 0)):
-        # screen.fill((0, 0, 0))
         pygame.display.update(self.tiles)
         self.tiles = []
         sdv = shift[0] // 64, shift[1] // 48
-        for i in range(int((self.center[0] - width / 4 * 3) // self.width),
-                       int((self.center[0] + width / 4 * 3) // self.width)):
-            if (i - sdv[0], -sdv[1]) == (0, 0):
-                current_hexagon = self.hexagons["water"]
-            else:
-                current_hexagon = self.hexagons["grass"]
+        for i in range(int(self.center[0] // 64 * -2),
+                       int(self.center[0] // 64 * 2)):
+            current_hexagon = self.hexagons[
+                map.get(((i - sdv[0]) * 2 + (sdv[1] % 2), -sdv[1]), "grass")]
             screen.blit(current_hexagon,
                         (self.center[0] + i * 64 + shift[0] % 64 + 32 * (sdv[1] % 2),
                          self.center[1] + shift[1] % 48))
             self.tiles.append(
                 (self.center[0] + i * 64 + shift[0] % 64, self.center[1] + shift[1] % 48, 64, 64))
-            for j in range(int((self.center[1] - height / 4 * 3) // self.height * 2),
-                           int((self.center[1] + height / 4 * 3) // self.height * 2)):
+            textsurface = myfont.render('{}, {}'.format((i - sdv[0]) * 2 + (sdv[1] % 2), -sdv[1]),
+                                        False, (0, 0, 0))
+            screen.blit(textsurface,
+                        (self.center[0] + i * 64 + shift[0] % 64 + 32 * (sdv[1] % 2) + 16,
+                         self.center[1] + shift[1] % 48 + 32))
+            ma = int(self.center[1] // 64 * 2)
+            for j in range(int(self.center[1] // 64 * -2),
+                           int(self.center[1] // 64 * 2)):
                 if j:
-                    if (i - sdv[0], j - sdv[1]) == (0, 0):
-                        current_hexagon = self.hexagons["water"]
-                    else:
-                        current_hexagon = self.hexagons["grass"]
+                    current_hexagon = self.hexagons[
+                        map.get(((i - sdv[0]) * 2 + abs(j) - abs(sdv[1]) % ma, j - sdv[1]),
+                                "grass")]
                     screen.blit(current_hexagon,
-                                (self.center[0] + i * 64 + 32 * (abs(j) - abs(sdv[1])) + shift[
+                                (self.center[0] + i * 64 + 32 * (abs(j) - abs(sdv[1]) % ma) + shift[
                                     0] % 64,
                                  self.center[1] + (j * 48) + shift[1] % 48))
+                    textsurface = myfont.render(
+                        '{}, {}'.format((i - sdv[0]) * 2 + abs(j) - abs(sdv[1]) % ma, j - sdv[1]),
+                        False,
+                        (0, 0, 0))
+                    screen.blit(textsurface,
+                                (self.center[0] + i * 64 + 32 * (abs(j) - abs(sdv[1]) % ma) + shift[
+                                    0] % 64 + 16,
+                                 self.center[1] + (j * 48) + shift[1] % 48 + 32))
                     self.tiles.append((self.center[0] + i * 64 + 32 * abs(j) + shift[0] % 64,
                                        self.center[1] + (j * 48) + shift[1] % 48, 64, 64))
 
     def get_click(self, x, y):
-        x += 32 * ((y // self.height) % 2)
-        current = x // 64, y // self.height
-        if not x % 64:
-            return
-        point = Point(x - 32 * ((y // self.height) % 2), y)
+        x -= self.center[0]
+        y -= self.center[1]
+        current = [int(x // 32), int(y // self.height)]
+        current = current[0] - ((current[0] % 2) ^ (current[1] % 2)), current[1]
+        # if not x % 64:
+        #     return
+        point = Point(x, y)
         polygon = Polygon(
-            [(current[0] * 64 + 32 * (((y // self.height) % 2) == 0) + round(sin(radians(i))) * 32,
-              current[1] * self.height + round(cos(radians(i)) * 32)) for i in
+            [(current[0] * 32 + round(sin(radians(i))) * 32 + 32,
+              current[1] * self.height + round(cos(radians(i)) * 32) + 32) for i in
              range(0, 360, 60)])
         # print(current)
+        # print(polygon, x, y)
         # print(x % 64, y % self.height)
         if polygon.contains(point):
             return current[0], current[1]
         else:
-            cond = (x % 64) > 32
-            # print(current[0] + (1 if cond else - 1) * ((current[1] % 2) ^ cond), current[1] + 1)
-            return current[0] + (1 if cond else - 1) * ((current[1] % 2) ^ cond), current[1] + 1
+            if (x % 64) > 32:
+                return current[0] - 1, current[1] - 1
+            else:
+                return current[0] + 1, current[1] - 1
+        # if polygon.contains(point):
+        #     return current[0] - self.center[0] // 64, current[1] - self.center[1] // 48
+        # else:
+        #     cond = (x % 64) > 32
+        #     # print(current[0] + (1 if cond else - 1) * ((current[1] % 2) ^ cond), current[1] + 1)
+        #     return current[0] + (1 if cond else - 1) * (bool(current[1] % 2) ^ cond) - self.center[0] // 64, current[1] + 1 - self.center[1] // 48
 
+
+map = {(3, 3): "castle"}
 
 if __name__ == "__main__":
     pygame.init()
+    pygame.font.init()
+    myfont = pygame.font.SysFont('Comic Sans MS', 22)
     size = width, height = 800, 600
     screen = pygame.display.set_mode(size)
     game = Game(screen)
     running = True
     clock = pygame.time.Clock()
     while running:
+        # screen.fill((0, 0, 0))
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -111,5 +138,6 @@ if __name__ == "__main__":
                             -10 * pressed[pygame.K_w] + 10 * pressed[pygame.K_s])
         game.flip()
         pygame.display.flip()
+
         clock.tick(30)
         # size = width, height = pygame.display.get_surface().get_size()
