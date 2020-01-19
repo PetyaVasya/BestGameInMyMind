@@ -12,18 +12,20 @@ class Game:
         self.screen = screen
         self.field_surface = pygame.Surface((width, height))
         self.field = Field(self.field_surface)
-        self.shift = 0
+        self.shift = [0, 0]
 
     def flip(self):
-        self.shift += 1
-        self.field.flip((self.shift, 0))
+        self.field.flip(self.shift)
         self.screen.blit(pygame.transform.scale(self.field_surface, size), (0, 0))
 
     def get_click(self, mouse_pos):
-        res = self.field.get_click(mouse_pos[0] - self.shift, mouse_pos[1])
-        pygame.draw.circle(self.field_surface, (0, 0, 0), (
-        res[0] * 64 + 32 * ((res[1] % 2) == 0), res[1] * 48), 2)
+        res = self.field.get_click(mouse_pos[0] + self.shift[0], mouse_pos[1] + self.shift[1])
+        # pygame.draw.circle(self.field_surface, (0, 0, 0), (
+        # res[0] * 64 + 32 * ((res[1] % 2) == 0), res[1] * 48), 2)
         return res
+
+    def increase_shift(self, x, y):
+        self.shift = self.shift[0] - x, self.shift[1] - y
 
 
 class Field:
@@ -31,6 +33,7 @@ class Field:
     def __init__(self, screen, start=(0, 0)):
         self.start = start
         self.hexagons = {"grass": pygame.transform.scale(pygame.image.load("grass.png"), (64, 64)),
+                         "water": pygame.transform.scale(pygame.image.load("water.png"), (64, 64)),
                          }
         self.screen = screen
         self.width = BASE_R // 2
@@ -39,21 +42,34 @@ class Field:
         self.tiles = []
 
     def flip(self, shift=(0, 0)):
+        # screen.fill((0, 0, 0))
         pygame.display.update(self.tiles)
         self.tiles = []
+        sdv = shift[0] // 64, shift[1] // 48
         for i in range(int((self.center[0] - width / 4 * 3) // self.width),
                        int((self.center[0] + width / 4 * 3) // self.width)):
-            screen.blit(self.hexagons["grass"],
-                        (i * 64 + shift[0] % 64, self.center[1] + shift[1] % 64))
-            self.tiles.append((i * 64 + shift[0] % 64, self.center[1] + shift[1] % 64, 64, 64))
-            for j in range(int((self.center[1] - height / 4 * 3) // self.width),
-                           int((self.center[1] + height / 4 * 3) // self.width)):
+            if (i - sdv[0], -sdv[1]) == (0, 0):
+                current_hexagon = self.hexagons["water"]
+            else:
+                current_hexagon = self.hexagons["grass"]
+            screen.blit(current_hexagon,
+                        (self.center[0] + i * 64 + shift[0] % 64 + 32 * (sdv[1] % 2),
+                         self.center[1] + shift[1] % 48))
+            self.tiles.append(
+                (self.center[0] + i * 64 + shift[0] % 64, self.center[1] + shift[1] % 48, 64, 64))
+            for j in range(int((self.center[1] - height / 4 * 3) // self.height * 2),
+                           int((self.center[1] + height / 4 * 3) // self.height * 2)):
                 if j:
-                    screen.blit(self.hexagons["grass"],
-                                (i * 64 + 32 * abs(j) + shift[0] % 64,
-                                 self.center[1] + (j * 48) + shift[1] % 64))
-                    self.tiles.append((i * 64 + 32 * abs(j) + shift[0] % 64,
-                                       self.center[1] + (j * 48) + shift[1] % 64, 64, 64))
+                    if (i - sdv[0], j - sdv[1]) == (0, 0):
+                        current_hexagon = self.hexagons["water"]
+                    else:
+                        current_hexagon = self.hexagons["grass"]
+                    screen.blit(current_hexagon,
+                                (self.center[0] + i * 64 + 32 * (abs(j) - abs(sdv[1])) + shift[
+                                    0] % 64,
+                                 self.center[1] + (j * 48) + shift[1] % 48))
+                    self.tiles.append((self.center[0] + i * 64 + 32 * abs(j) + shift[0] % 64,
+                                       self.center[1] + (j * 48) + shift[1] % 48, 64, 64))
 
     def get_click(self, x, y):
         x += 32 * ((y // self.height) % 2)
@@ -81,6 +97,7 @@ if __name__ == "__main__":
     screen = pygame.display.set_mode(size)
     game = Game(screen)
     running = True
+    clock = pygame.time.Clock()
     while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -89,6 +106,10 @@ if __name__ == "__main__":
                 res = game.get_click(event.pos)
                 # print(event.pos)
                 print(res)
+        pressed = pygame.key.get_pressed()
+        game.increase_shift(-10 * pressed[pygame.K_a] + 10 * pressed[pygame.K_d],
+                            -10 * pressed[pygame.K_w] + 10 * pressed[pygame.K_s])
         game.flip()
         pygame.display.flip()
+        clock.tick(30)
         # size = width, height = pygame.display.get_surface().get_size()
