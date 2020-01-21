@@ -3,117 +3,236 @@ from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
 from math import cos, sin, radians, ceil
 
-BASE_R = 64
+from Environment import create_hexagon
+from Tools import *
+from constants import *
+from Settings import SessionAttributes
+import json
+# from Environment import create_hexagon
+
+
+'''
+Json Map Format:
+{
+    "session" : hash,
+    "hexagons":
+        [
+            {
+                "x": int,
+                "y": int,
+                "type": "hexagon type",
+                *if building*
+                "player": ""
+                "attributes":
+                    {
+                
+                    } 
+            }
+        ]
+}
+'''
 
 
 class Game:
+    center_x = 0
+    center_y = 0
+    hexagons = {}
 
     def __init__(self, screen):
         self.screen = screen
-        self.field_surface = pygame.Surface((width, height))
-        self.field = Field(self.field_surface)
-        self.shift = [0, 0]
+        self.surface = pygame.Surface((width, height), pygame.SRCALPHA)
+        self.current_fight = None
+
+    def init_pygame_variables(self):
+        self.center_x = width / 2 // STANDARD_WIDTH * STANDARD_WIDTH
+        self.center_y = height / 2 // STANDARD_HEIGHT * STANDARD_HEIGHT
+        self.hexagons = {GRASS: pygame.transform.scale(pygame.image.load(SPRITES_PATHS[GRASS]),
+                                                  (STANDARD_WIDTH, STANDARD_WIDTH)),
+                    WATER: pygame.transform.scale(pygame.image.load(SPRITES_PATHS[WATER]),
+                                                  (STANDARD_WIDTH, STANDARD_WIDTH)),
+                    }
+
+    def flip(self):
+        # self.surface.fill((0, 0, 0))
+        if self.current_fight:
+            self.current_fight.flip()
+            self.screen.blit(pygame.transform.scale(self.surface, size), (0, 0))
+
+    def buttons_handler(self, events):
+        pass
+
+    def on_click(self, mouse_pos):
+        if self.current_fight:
+            self.current_fight.on_click(mouse_pos)
+
+    def create_fight(self, map):
+        self.current_fight = Fight(self.surface)
+        self.current_fight.generate_map(map)
+
+    def get_current_fight(self):
+        return self.current_fight
+
+
+class Fight:
+
+    def __init__(self, screen):
+        self.field = None
+        self.screen = screen
+        self.attributes = SessionAttributes()
+        self.finished = False
+        self.shift = pygame.Vector2(0, 0)
+        self.selected = None
+        self.action = MAKE_PATH
+
+    def generate_map(self, map):
+        self.field = Field(self.screen, map)
+
+    def increase_shift(self, x, y):
+        self.shift.x -= x
+        self.shift.y -= y
+
+    def get_attributes(self):
+        return self.attributes
+
+    def on_click(self, pos):
+        # if pos[1] < 600:
+        #     pass
+        clicked_pos = self.field.get_click(pos)
+        clicked = self.field.get_hexagon(*clicked_pos)
+        if (clicked == GRASS) and self.action:
+            if self.action != DESTROY:
+                self.action_handler(self.action, clicked_pos)
+            else:
+                self.selected = None
+                self.action = None
+                self.make_menu()
+        elif clicked == GRASS:
+            self.selected = None
+            self.make_menu()
+        elif self.selected:
+            if self.action == MAKE_PATH:
+                self.action_handler(self.action, clicked_pos)
+        else:
+            self.selected = clicked
+            self.make_menu(clicked)
+
+    def make_menu(self, hexagon=None):
+        if hexagon:
+            pass
+        else:
+            # Standard Menu
+            pass
+
+    def action_handler(self, action, *attrs):
+        if action == MAKE_PATH:
+            func = self.selected.add_path_point
+        func(*attrs)
+
+    def __bool__(self):
+        return not self.finished
 
     def flip(self):
         self.field.flip(self.shift)
-        self.screen.blit(pygame.transform.scale(self.field_surface, size), (0, 0))
 
-    def get_click(self, mouse_pos):
-        res = self.field.get_click(mouse_pos[0] - self.shift[0], mouse_pos[1] - self.shift[1])
-        # pygame.draw.circle(self.field_surface, (0, 0, 0), (
-        # res[0] * 64 + 32 * ((res[1] % 2) == 0), res[1] * 48), 2)
-        return res
-
-    def increase_shift(self, x, y):
-        self.shift = self.shift[0] - x, self.shift[1] - y
+    def get_player(self):
+        return 1
 
 
 class Field:
 
-    def __init__(self, screen, start=(0, 0)):
+    def __init__(self, screen, map, start=(0, 0)):
         self.start = start
-        self.hexagons = {"grass": pygame.transform.scale(pygame.image.load("grass.png"), (64, 64)),
-                         "water": pygame.transform.scale(pygame.image.load("water.png"), (64, 64)),
-                         "castle": pygame.transform.scale(pygame.image.load("castle.png"),
-                                                          (64, 64)),
-                         }
         self.screen = screen
-        self.width = BASE_R // 2
-        self.height = 48
-        self.center = width / 2 // 64 * 64, height / 2 // 48 * 48
+        self.width = STANDARD_WIDTH // 2
+        self.height = STANDARD_HEIGHT
+        self.map = {}
+        self.convert_map(map)
         self.tiles = []
 
-    def flip(self, shift=(0, 0)):
-        pygame.display.update(self.tiles)
+    def flip(self, shift=pygame.Vector2(0, 0)):
+        # pygame.display.update(self.tiles)
         self.tiles = []
-        sdv = shift[0] // 64, shift[1] // 48
-        for i in range(int(self.center[0] // 64 * -2),
-                       int(self.center[0] // 64 * 2)):
-            current_hexagon = self.hexagons[
-                map.get(((i - sdv[0]) * 2 + (sdv[1] % 2), -sdv[1]), "grass")]
-            screen.blit(current_hexagon,
-                        (self.center[0] + i * 64 + shift[0] % 64 + 32 * (sdv[1] % 2),
-                         self.center[1] + shift[1] % 48))
-            self.tiles.append(
-                (self.center[0] + i * 64 + shift[0] % 64, self.center[1] + shift[1] % 48, 64, 64))
-            textsurface = myfont.render('{}, {}'.format((i - sdv[0]) * 2 + (sdv[1] % 2), -sdv[1]),
-                                        False, (0, 0, 0))
-            screen.blit(textsurface,
-                        (self.center[0] + i * 64 + shift[0] % 64 + 32 * (sdv[1] % 2) + 16,
-                         self.center[1] + shift[1] % 48 + 32))
-            ma = int(self.center[1] // 64 * 2)
-            for j in range(int(self.center[1] // 64 * -2),
-                           int(self.center[1] // 64 * 2)):
-                if j:
-                    current_hexagon = self.hexagons[
-                        map.get(((i - sdv[0]) * 2 + abs(j) - abs(sdv[1]) % ma, j - sdv[1]),
-                                "grass")]
-                    screen.blit(current_hexagon,
-                                (self.center[0] + i * 64 + 32 * (abs(j) - abs(sdv[1]) % ma) + shift[
-                                    0] % 64,
-                                 self.center[1] + (j * 48) + shift[1] % 48))
-                    textsurface = myfont.render(
-                        '{}, {}'.format((i - sdv[0]) * 2 + abs(j) - abs(sdv[1]) % ma, j - sdv[1]),
-                        False,
-                        (0, 0, 0))
-                    screen.blit(textsurface,
-                                (self.center[0] + i * 64 + 32 * (abs(j) - abs(sdv[1]) % ma) + shift[
-                                    0] % 64 + 16,
-                                 self.center[1] + (j * 48) + shift[1] % 48 + 32))
-                    self.tiles.append((self.center[0] + i * 64 + 32 * abs(j) + shift[0] % 64,
-                                       self.center[1] + (j * 48) + shift[1] % 48, 64, 64))
-
-    def get_click(self, x, y):
-        x -= self.center[0]
-        y -= self.center[1]
-        current = [int(x // 32), int(y // self.height)]
-        current = current[0] - ((current[0] % 2) ^ (current[1] % 2)), current[1]
-        # if not x % 64:
-        #     return
-        point = Point(x, y)
-        polygon = Polygon(
-            [(current[0] * 32 + round(sin(radians(i))) * 32 + 32,
-              current[1] * self.height + round(cos(radians(i)) * 32) + 32) for i in
-             range(0, 360, 60)])
-        # print(current)
-        # print(polygon, x, y)
-        # print(x % 64, y % self.height)
-        if polygon.contains(point):
-            return current[0], current[1]
-        else:
-            if (x % 64) > 32:
-                return current[0] - 1, current[1] - 1
+        sdv = shift.x // STANDARD_WIDTH, shift.y // STANDARD_HEIGHT
+        for i in range(int(get_game().center_x // STANDARD_WIDTH * -2),
+                       int(get_game().center_x // STANDARD_WIDTH * 2)):
+            current = self.map.get(((i - sdv[0]) * 2 + (sdv[1] % 2), -sdv[1]), GRASS)
+            if current == GRASS:
+                current_hexagon = get_game().hexagons[GRASS]
+                self.tiles.append(self.screen.blit(current_hexagon,
+                                              (
+                                                  get_game().center_x + i * STANDARD_WIDTH + shift.x % STANDARD_WIDTH + 32 * (
+                                                          sdv[1] % 2),
+                                                  get_game().center_y + shift.y % STANDARD_HEIGHT)))
+                textsurface = myfont.render(
+                    '{}, {}'.format((i - sdv[0]) * 2 + (sdv[1] % 2), -sdv[1]),
+                    False, (0, 0, 0))
+                self.screen.blit(textsurface,
+                            (
+                                get_game().center_x + i * STANDARD_WIDTH + shift.x % STANDARD_WIDTH + 32 * (
+                                        sdv[1] % 2) + 16,
+                                get_game().center_y + shift.y % STANDARD_HEIGHT + 32))
             else:
-                return current[0] + 1, current[1] - 1
-        # if polygon.contains(point):
-        #     return current[0] - self.center[0] // 64, current[1] - self.center[1] // 48
-        # else:
-        #     cond = (x % 64) > 32
-        #     # print(current[0] + (1 if cond else - 1) * ((current[1] % 2) ^ cond), current[1] + 1)
-        #     return current[0] + (1 if cond else - 1) * (bool(current[1] % 2) ^ cond) - self.center[0] // 64, current[1] + 1 - self.center[1] // 48
+                current.paint(self.screen, pygame.Vector2(shift.x % 64, shift.y % 64))
+                current.tick()
+            ma = int(get_game().center_y // STANDARD_WIDTH * 2)
+            for j in range(int(get_game().center_y // STANDARD_WIDTH * -2),
+                           int(get_game().center_y // STANDARD_WIDTH * 2)):
+                if j:
+                    current = self.map.get(((i - sdv[0]) * 2 + abs(j) - abs(sdv[1]) % ma, j - sdv[1]), GRASS)
+                    if current == GRASS:
+                        current_hexagon = get_game().hexagons[GRASS]
+                        self.tiles.append(self.screen.blit(current_hexagon,
+                                                      (get_game().center_x + i * STANDARD_WIDTH + 32 * (
+                                                              abs(j) - abs(sdv[1]) % ma) + shift[
+                                                           0] % STANDARD_WIDTH,
+                                                       get_game().center_y + (j * STANDARD_HEIGHT) +
+                                                       shift[
+                                                           1] % STANDARD_HEIGHT)))
+                        textsurface = myfont.render(
+                            '{}, {}'.format((i - sdv[0]) * 2 + abs(j) - abs(sdv[1]) % ma,
+                                            j - sdv[1]),
+                            False,
+                            (0, 0, 0))
+                        self.screen.blit(textsurface,
+                                    (get_game().center_x + i * STANDARD_WIDTH + 32 * (
+                                            abs(j) - abs(sdv[1]) % ma) + shift[
+                                         0] % STANDARD_WIDTH + 16,
+                                     get_game().center_y + (j * STANDARD_HEIGHT) + shift[
+                                         1] % STANDARD_HEIGHT + 32))
+                    else:
+                        current.paint(self.screen, pygame.Vector2(shift.x % 64, shift.y % 64))
+                        current.tick()
+
+    def get_click(self, vector2):
+        return get_hexagon_by_world_pos(vector2)
+
+    def get_hexagon(self, x, y):
+        return self.map.get((x, y), create_hexagon(0, (x, y), GRASS))
+
+    def convert_map(self, map):
+        for hexagon in map["hexagons"]:
+            hexagon_pos = hexagon["x"], hexagon["y"]
+            attrs = hexagon["attributes"]
+            hexagon_type = hexagon["type"] if hexagon["type"] != BUILDING else attrs["struct"]
+            del attrs["struct"]
+            self.map[hexagon_pos] = create_hexagon(
+                get_game().get_current_fight().get_player(),
+                hexagon_pos, hexagon_type, *attrs)
+        print(self.map)
+
+    # def get_current_hexagon_sprite(data):
+    #     if data["type"] == BUILDING:
+    #         return data["attributes"]["struct"]
 
 
-map = {(3, 3): "castle"}
+# map = {(3, 3): {"type":
+#                 }}
+map = json.loads(open("test.json").read())
+
+
+def get_game():
+    return game
+
 
 if __name__ == "__main__":
     pygame.init()
@@ -122,22 +241,25 @@ if __name__ == "__main__":
     size = width, height = 800, 600
     screen = pygame.display.set_mode(size)
     game = Game(screen)
+    game.init_pygame_variables()
     running = True
     clock = pygame.time.Clock()
+    game.create_fight(map)
     while running:
-        # screen.fill((0, 0, 0))
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                res = game.get_click(event.pos)
+                # res = game.get_click(event.pos)
                 # print(event.pos)
-                print(res)
+                # print(res)
+                game.on_click(pygame.Vector2(event.pos))
+                pass
         pressed = pygame.key.get_pressed()
-        game.increase_shift(-10 * pressed[pygame.K_a] + 10 * pressed[pygame.K_d],
-                            -10 * pressed[pygame.K_w] + 10 * pressed[pygame.K_s])
+        # print(pressed)
+        # if any(pressed):
+        game.buttons_handler(pressed)
         game.flip()
         pygame.display.flip()
-
-        clock.tick(30)
+        clock.tick(FPS)
         # size = width, height = pygame.display.get_surface().get_size()
