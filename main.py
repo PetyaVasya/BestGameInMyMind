@@ -8,6 +8,7 @@ from Tools import *
 from constants import *
 from Settings import SessionAttributes
 import json
+
 # from Environment import create_hexagon
 
 
@@ -47,10 +48,10 @@ class Game:
         self.center_x = width / 2 // STANDARD_WIDTH * STANDARD_WIDTH
         self.center_y = height / 2 // STANDARD_HEIGHT * STANDARD_HEIGHT
         self.hexagons = {GRASS: pygame.transform.scale(pygame.image.load(SPRITES_PATHS[GRASS]),
-                                                  (STANDARD_WIDTH, STANDARD_WIDTH)),
-                    WATER: pygame.transform.scale(pygame.image.load(SPRITES_PATHS[WATER]),
-                                                  (STANDARD_WIDTH, STANDARD_WIDTH)),
-                    }
+                                                       (STANDARD_WIDTH, STANDARD_WIDTH)),
+                         WATER: pygame.transform.scale(pygame.image.load(SPRITES_PATHS[WATER]),
+                                                       (STANDARD_WIDTH, STANDARD_WIDTH)),
+                         }
 
     def flip(self):
         # self.surface.fill((0, 0, 0))
@@ -58,8 +59,14 @@ class Game:
             self.current_fight.flip()
             self.screen.blit(pygame.transform.scale(self.surface, size), (0, 0))
 
+    def tick(self):
+        if self.current_fight:
+            self.current_fight.tick()
+
     def buttons_handler(self, events):
-        pass
+        if self.current_fight:
+            self.current_fight.increase_shift(-10 * events[pygame.K_a] + 10 * events[pygame.K_d],
+                                              -10 * events[pygame.K_w] + 10 * events[pygame.K_s])
 
     def on_click(self, mouse_pos):
         if self.current_fight:
@@ -97,7 +104,7 @@ class Fight:
     def on_click(self, pos):
         # if pos[1] < 600:
         #     pass
-        clicked_pos = self.field.get_click(pos)
+        clicked_pos = self.field.get_click(pos - self.shift)
         clicked = self.field.get_hexagon(*clicked_pos)
         if (clicked == GRASS) and self.action:
             if self.action != DESTROY:
@@ -134,6 +141,9 @@ class Fight:
     def flip(self):
         self.field.flip(self.shift)
 
+    def tick(self):
+        self.field.tick()
+
     def get_player(self):
         return 1
 
@@ -149,8 +159,13 @@ class Field:
         self.convert_map(map)
         self.tiles = []
 
+    def tick(self):
+        for i in self.map.values():
+            i.tick()
+
     def flip(self, shift=pygame.Vector2(0, 0)):
         # pygame.display.update(self.tiles)
+        special = []
         self.tiles = []
         sdv = shift.x // STANDARD_WIDTH, shift.y // STANDARD_HEIGHT
         for i in range(int(get_game().center_x // STANDARD_WIDTH * -2),
@@ -159,49 +174,51 @@ class Field:
             if current == GRASS:
                 current_hexagon = get_game().hexagons[GRASS]
                 self.tiles.append(self.screen.blit(current_hexagon,
-                                              (
-                                                  get_game().center_x + i * STANDARD_WIDTH + shift.x % STANDARD_WIDTH + 32 * (
-                                                          sdv[1] % 2),
-                                                  get_game().center_y + shift.y % STANDARD_HEIGHT)))
+                                                   (
+                                                       get_game().center_x + i * STANDARD_WIDTH + shift.x % STANDARD_WIDTH + 32 * (
+                                                               sdv[1] % 2),
+                                                       get_game().center_y + shift.y % STANDARD_HEIGHT)))
                 textsurface = myfont.render(
                     '{}, {}'.format((i - sdv[0]) * 2 + (sdv[1] % 2), -sdv[1]),
                     False, (0, 0, 0))
                 self.screen.blit(textsurface,
-                            (
-                                get_game().center_x + i * STANDARD_WIDTH + shift.x % STANDARD_WIDTH + 32 * (
-                                        sdv[1] % 2) + 16,
-                                get_game().center_y + shift.y % STANDARD_HEIGHT + 32))
+                                 (
+                                     get_game().center_x + i * STANDARD_WIDTH + shift.x % STANDARD_WIDTH + 32 * (
+                                             sdv[1] % 2) + 16,
+                                     get_game().center_y + shift.y % STANDARD_HEIGHT + 32))
             else:
-                current.paint(self.screen, pygame.Vector2(shift.x % 64, shift.y % 64))
-                current.tick()
+                special.append(current)
             ma = int(get_game().center_y // STANDARD_WIDTH * 2)
             for j in range(int(get_game().center_y // STANDARD_WIDTH * -2),
                            int(get_game().center_y // STANDARD_WIDTH * 2)):
                 if j:
-                    current = self.map.get(((i - sdv[0]) * 2 + abs(j) - abs(sdv[1]) % ma, j - sdv[1]), GRASS)
+                    current = self.map.get(
+                        ((i - sdv[0]) * 2 + abs(j) - abs(sdv[1]) % ma, j - sdv[1]), GRASS)
                     if current == GRASS:
                         current_hexagon = get_game().hexagons[GRASS]
                         self.tiles.append(self.screen.blit(current_hexagon,
-                                                      (get_game().center_x + i * STANDARD_WIDTH + 32 * (
-                                                              abs(j) - abs(sdv[1]) % ma) + shift[
-                                                           0] % STANDARD_WIDTH,
-                                                       get_game().center_y + (j * STANDARD_HEIGHT) +
-                                                       shift[
-                                                           1] % STANDARD_HEIGHT)))
+                                                           (
+                                                           get_game().center_x + i * STANDARD_WIDTH + 32 * (
+                                                                   abs(j) - abs(sdv[
+                                                                                    1]) % ma) + shift.x % STANDARD_WIDTH,
+                                                           get_game().center_y + (
+                                                                       j * STANDARD_HEIGHT) +
+                                                           shift.y % STANDARD_HEIGHT)))
                         textsurface = myfont.render(
                             '{}, {}'.format((i - sdv[0]) * 2 + abs(j) - abs(sdv[1]) % ma,
                                             j - sdv[1]),
                             False,
                             (0, 0, 0))
                         self.screen.blit(textsurface,
-                                    (get_game().center_x + i * STANDARD_WIDTH + 32 * (
-                                            abs(j) - abs(sdv[1]) % ma) + shift[
-                                         0] % STANDARD_WIDTH + 16,
-                                     get_game().center_y + (j * STANDARD_HEIGHT) + shift[
-                                         1] % STANDARD_HEIGHT + 32))
+                                         (get_game().center_x + i * STANDARD_WIDTH + 32 * (
+                                                 abs(j) - abs(sdv[1]) % ma) + shift[
+                                              0] % STANDARD_WIDTH + 16,
+                                          get_game().center_y + (j * STANDARD_HEIGHT) + shift[
+                                              1] % STANDARD_HEIGHT + 32))
                     else:
-                        current.paint(self.screen, pygame.Vector2(shift.x % 64, shift.y % 64))
-                        current.tick()
+                        special.append(current)
+        for i in special:
+            i.paint(self.screen, shift)
 
     def get_click(self, vector2):
         return get_hexagon_by_world_pos(vector2)
@@ -259,6 +276,7 @@ if __name__ == "__main__":
         # print(pressed)
         # if any(pressed):
         game.buttons_handler(pressed)
+        game.tick()
         game.flip()
         pygame.display.flip()
         clock.tick(FPS)

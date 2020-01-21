@@ -52,7 +52,7 @@ class Hexagon(Object):
         pass
 
     def paint(self, surface, shift):
-        return surface.blit(self.sprite, self.world_position - shift)
+        return surface.blit(self.sprite, self.world_position + shift)
 
     def get_neighbors(self):
         if self.hexagon:
@@ -94,7 +94,7 @@ class UnitSpawn(Building):
 
     def tick(self):
         self.alpha += 1
-        if (self.alpha / FPS) ==\
+        if (self.alpha / FPS) == \
                 __main__.get_game().get_current_fight().get_attributes().spawn_rate:
             if self.path:
                 self.path.spawn_mob()
@@ -204,8 +204,8 @@ class Man(Object):
     def move(self):
         end = self.path[0]
         end = pygame.Vector2(
-                __main__.get_game().center_x + end[0] * STANDARD_WIDTH // 2 + 32,
-                __main__.get_game().center_y + end[1] * STANDARD_HEIGHT + 32)
+            __main__.get_game().center_x + end[0] * STANDARD_WIDTH // 2 + 32,
+            __main__.get_game().center_y + end[1] * STANDARD_HEIGHT + 32)
         self.set_world_position(self.start.lerp(end, self.alpha))
         if self.alpha == 1:
             self.start_hexagon = self.path.popleft()
@@ -227,10 +227,11 @@ class Man(Object):
         return True
 
     def increase_alpha(self, delta):
-        self.alpha = min(1, delta / max((self.start_hexagon[0] - self.path[0][0]) // 2, self.start_hexagon[1] - self.path[0][1]) + self.alpha)
+        self.alpha = min(1, delta / max(abs(self.start_hexagon[0] - self.path[0][0]) // 2,
+                                        abs(self.start_hexagon[1] - self.path[0][1])) + self.alpha)
 
     def paint(self, surface, shift):
-        return pygame.draw.circle(surface, (0, 0, 0), self.world_position - shift,
+        return pygame.draw.circle(surface, (0, 0, 0), self.world_position + shift,
                                   self.life_time * 2)
 
     def get_hexagon(self):
