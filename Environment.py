@@ -85,6 +85,29 @@ class Building(Hexagon):
     # def upgrade(self):
 
 
+class Source(Hexagon):
+
+    def __init__(self, source_type, hexagon=None):
+        super().__init__(RESOURCE, hexagon)
+        self.source_type = source_type
+        self.current = 0
+        self.need_for_resource = TRADE[source_type]
+        self.last_player = None
+
+    def increase(self, player):
+        if (self.last_player != player) and not self.current:
+            self.current += 1
+            self.last_player = player
+        elif self.last_player == player:
+            self.current += 1
+        else:
+            self.current -= 1
+        if not self.current % self.need_for_resource:
+            __main__.get_game().get_current_fight().spawn_recource(*self.hexagon)
+            self.current = 0
+            self.last_player = None
+
+
 class UnitSpawn(Building):
 
     def __init__(self, player, building_type, hexagon=None):

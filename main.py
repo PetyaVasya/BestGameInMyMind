@@ -8,7 +8,7 @@ from Tools import *
 from constants import *
 from Settings import SessionAttributes
 import json
-
+from UI import *
 # from Environment import create_hexagon
 
 
@@ -57,7 +57,7 @@ class Game:
         # self.surface.fill((0, 0, 0))
         if self.current_fight:
             self.current_fight.flip()
-            self.screen.blit(pygame.transform.scale(self.surface, size), (0, 0))
+        self.screen.blit(pygame.transform.scale(self.surface, size), (0, 0))
 
     def tick(self):
         if self.current_fight:
@@ -73,14 +73,14 @@ class Game:
             self.current_fight.on_click(mouse_pos)
 
     def create_fight(self, map):
-        self.current_fight = Fight(self.surface)
+        self.current_fight = Session(self.surface)
         self.current_fight.generate_map(map)
 
     def get_current_fight(self):
         return self.current_fight
 
 
-class Fight:
+class Session:
 
     def __init__(self, screen):
         self.field = None
@@ -90,6 +90,12 @@ class Fight:
         self.shift = pygame.Vector2(0, 0)
         self.selected = None
         self.action = MAKE_PATH
+        self.menu = GameMenu(self.screen, width=width)
+        self.menu.set_world_position(0, height - STANDARD_WIDTH * 2.5)
+        self.statusbar = Statusbar(self.screen, width=width)
+        self.statusbar.set_bar("wood", 100000000000000000, pygame.image.load(SPRITES_PATHS[WOOD]))
+        self.statusbar.set_bar("wood1", 100000000000000000, pygame.image.load(SPRITES_PATHS[WOOD]))
+        self.statusbar.set_bar("wood2", 100000000000000000, pygame.image.load(SPRITES_PATHS[WOOD]))
 
     def generate_map(self, map):
         self.field = Field(self.screen, map)
@@ -102,8 +108,12 @@ class Fight:
         return self.attributes
 
     def on_click(self, pos):
-        # if pos[1] < 600:
-        #     pass
+        if pos.y > (height - STANDARD_WIDTH * 2.5):
+            # clicked_pos = self.field.get_click(pygame.Vector2(pos.x, pos.y - (height - STANDARD_WIDTH * 2.5)))
+            # clicked = self.field.get_hexagon(*clicked_pos)
+            # print(clicked_pos)
+            print(self.menu.get_click(pygame.Vector2(pos.x, pos.y)))
+            return
         clicked_pos = self.field.get_click(pos - self.shift)
         clicked = self.field.get_hexagon(*clicked_pos)
         if (clicked == GRASS) and self.action:
@@ -140,6 +150,8 @@ class Fight:
 
     def flip(self):
         self.field.flip(self.shift)
+        self.menu.flip()
+        self.statusbar.flip()
 
     def tick(self):
         self.field.tick()
@@ -175,17 +187,19 @@ class Field:
                 current_hexagon = get_game().hexagons[GRASS]
                 self.tiles.append(self.screen.blit(current_hexagon,
                                                    (
-                                                       get_game().center_x + i * STANDARD_WIDTH + shift.x % STANDARD_WIDTH + 32 * (
+                                                       get_game().center_x + i * STANDARD_WIDTH +
+                                                       shift.x % STANDARD_WIDTH + 32 * (
                                                                sdv[1] % 2),
-                                                       get_game().center_y + shift.y % STANDARD_HEIGHT)))
+                                                       get_game().center_y
+                                                       + shift.y % STANDARD_HEIGHT)
+                                                   )
+                                  )
                 textsurface = myfont.render(
                     '{}, {}'.format((i - sdv[0]) * 2 + (sdv[1] % 2), -sdv[1]),
                     False, (0, 0, 0))
-                self.screen.blit(textsurface,
-                                 (
-                                     get_game().center_x + i * STANDARD_WIDTH + shift.x % STANDARD_WIDTH + 32 * (
-                                             sdv[1] % 2) + 16,
-                                     get_game().center_y + shift.y % STANDARD_HEIGHT + 32))
+                self.screen.blit(textsurface, (
+                    get_game().center_x + i * STANDARD_WIDTH + shift.x % STANDARD_WIDTH + 32 * (
+                            sdv[1] % 2) + 16, get_game().center_y + shift.y % STANDARD_HEIGHT + 32))
             else:
                 special.append(current)
             ma = int(get_game().center_y // STANDARD_WIDTH * 2)
@@ -198,12 +212,12 @@ class Field:
                         current_hexagon = get_game().hexagons[GRASS]
                         self.tiles.append(self.screen.blit(current_hexagon,
                                                            (
-                                                           get_game().center_x + i * STANDARD_WIDTH + 32 * (
-                                                                   abs(j) - abs(sdv[
-                                                                                    1]) % ma) + shift.x % STANDARD_WIDTH,
-                                                           get_game().center_y + (
+                                                               get_game().center_x + i * STANDARD_WIDTH + 32 * (
+                                                                       abs(j) - abs(sdv[
+                                                                                        1]) % ma) + shift.x % STANDARD_WIDTH,
+                                                               get_game().center_y + (
                                                                        j * STANDARD_HEIGHT) +
-                                                           shift.y % STANDARD_HEIGHT)))
+                                                               shift.y % STANDARD_HEIGHT)))
                         textsurface = myfont.render(
                             '{}, {}'.format((i - sdv[0]) * 2 + abs(j) - abs(sdv[1]) % ma,
                                             j - sdv[1]),
@@ -235,7 +249,6 @@ class Field:
             self.map[hexagon_pos] = create_hexagon(
                 get_game().get_current_fight().get_player(),
                 hexagon_pos, hexagon_type, *attrs)
-        print(self.map)
 
     # def get_current_hexagon_sprite(data):
     #     if data["type"] == BUILDING:
@@ -254,7 +267,7 @@ def get_game():
 if __name__ == "__main__":
     pygame.init()
     pygame.font.init()
-    myfont = pygame.font.SysFont('Comic Sans MS', 22)
+    myfont = pygame.font.SysFont('Comic Sans MS', STANDARD_FONT)
     size = width, height = 800, 600
     screen = pygame.display.set_mode(size)
     game = Game(screen)
@@ -267,14 +280,9 @@ if __name__ == "__main__":
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                # res = game.get_click(event.pos)
-                # print(event.pos)
-                # print(res)
                 game.on_click(pygame.Vector2(event.pos))
                 pass
         pressed = pygame.key.get_pressed()
-        # print(pressed)
-        # if any(pressed):
         game.buttons_handler(pressed)
         game.tick()
         game.flip()
