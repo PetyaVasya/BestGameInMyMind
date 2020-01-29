@@ -4,7 +4,7 @@ import pygame
 import __main__
 from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
-
+import Environment
 from constants import *
 
 
@@ -32,17 +32,29 @@ Menu Format
 
 
 class GameMenu(UIObject):
+    menus = {DEFAULT_MENU: {(0, 2): BUILD},
+             BUILD: {(2, 2): CANTEEN, (4, 2): ROAD, (1, 1): STORAGE},
+             TOP_LINE_MENU: {(0, 0): MAKE_PATH, (2, 0): DELETE_PATH, (4, 0): DESTROY}}
 
     def __init__(self, screen, pos=pygame.Vector2(0, 0), width=800, height=3):
         super().__init__(pos)
         self.screen = screen
         self.selected = None
         self.action = None
+        self.build = None
         self.width = width
         self.height = STANDARD_WIDTH * (height - 0.5)
-        self.background = pygame.transform.scale(
-            pygame.image.load(SPRITES_PATHS[MENU_BACKGROUND]),
-            (STANDARD_WIDTH, STANDARD_WIDTH))
+        self.hexagons = {i: pygame.transform.scale(
+            pygame.image.load(SPRITES_PATHS[i]),
+            (STANDARD_WIDTH, STANDARD_WIDTH)) for i in
+            (MENU_BACKGROUND, DESTROY, DELETE_PATH, MAKE_PATH, BACKWARD, BUILD)
+        }
+        self.hexagons.update({
+            i: pygame.transform.scale(
+                pygame.image.load(MENU_PATHS[i]),
+                (STANDARD_WIDTH, STANDARD_WIDTH)) for i in
+            (CANTEEN, ROAD, STORAGE)
+        })
 
     def flip(self, menu_type=None):
         max_right = self.width // 64
@@ -62,9 +74,20 @@ class GameMenu(UIObject):
                     rect[1] = STANDARD_HEIGHT
                 elif j == 3:
                     rect[3] = STANDARD_HEIGHT // 3
-                self.screen.blit(self.background, self.upgrade_coords(
-                    STANDARD_WIDTH * max(0, i) + r_shift * bool(i + 1) - (STANDARD_WIDTH / 2) * abs(
-                        j % 2), STANDARD_HEIGHT * max(0, j)), rect)
+                if (self.action and self.action not in self.menus[TOP_LINE_MENU].values()) and (
+                        (i * 2 - (j % 2), j) == (0, 2)):
+                    current = BACKWARD
+                else:
+                    current = self.menus.get(self.action, self.menus[DEFAULT_MENU]).get(
+                        (i * 2 - (j % 2), j),
+                        self.menus[TOP_LINE_MENU].get(
+                            (i * 2 - (j % 2), j) if self.action != ASK else MENU_BACKGROUND,
+                            MENU_BACKGROUND))
+                self.screen.blit(self.hexagons[current],
+                                 self.upgrade_coords(
+                                     STANDARD_WIDTH * max(0, i) + r_shift * bool(i + 1) - (
+                                             STANDARD_WIDTH / 2) * abs(
+                                         j % 2), STANDARD_HEIGHT * max(0, j)), rect)
         pygame.draw.line(self.screen, (120, 60, 0), self.upgrade_coords(0, 0),
                          self.upgrade_coords(self.width, 0), width=5)
 
@@ -73,7 +96,6 @@ class GameMenu(UIObject):
         r_shift = (self.width - self.width // 64 * 64) / 2
         vector2 -= self.world_position + [-r_shift + STANDARD_WIDTH // 2,
                                           STANDARD_WIDTH // 2 - STANDARD_HEIGHT // 2 + 2.5]
-        print(vector2)
         current = [int(vector2.x // 32),
                    int(vector2.y // STANDARD_HEIGHT)]
         current = current[0] - ((current[0] % 2) ^ (current[1] % 2)), current[1]
@@ -83,13 +105,38 @@ class GameMenu(UIObject):
               current[1] * STANDARD_HEIGHT + round(cos(radians(i)) * 32) + 32) for i in
              range(0, 360, 60)])
         if polygon.contains(point):
-            print("contains")
             return current[0], current[1]
         else:
             if (vector2.x % 64) > 32:
                 return current[0], current[1]
             else:
                 return current[0], current[1]
+
+    def on_click(self, vector2):
+        current = self.get_click(vector2)
+        action = self.menus[TOP_LINE_MENU].get(current, None)
+        if action:
+            self.action = action
+            self.build = None
+        if self.action and (current == (0, 2)):
+            self.clear()
+        elif self.action == BUILD:
+            build = self.menus[BUILD].get(current, None)
+            if build:
+                self.build = Environment.create_hexagon(__main__.get_game().session.get_player(),
+                                                        current, PROJECT, build)
+        elif self.menus[DEFAULT_MENU].get(current, None) == BUILD:
+            self.action = BUILD
+            build = self.menus[BUILD].get(current, None)
+            if build:
+                self.build = Environment.create_hexagon(__main__.get_game().session.get_player(),
+                                                        current, PROJECT, build)
+        else:
+            self.action = self.menus[DEFAULT_MENU].get(current, None)
+
+    def clear(self):
+        self.action = None
+        self.build = None
 
 
 class Statusbar(dict, UIObject):
@@ -165,3 +212,69 @@ class Bar:
         self.icon = icon
         self.value = value
         self.priority = priority
+
+
+class ProgressBar(UIObject):
+
+    def __init__(self, maximum, pos=pygame.Vector2(0, 0), base_color=pygame.Vector3(63, 65, 67),
+                 width=STANDARD_WIDTH, height=16):
+        super().__init__(pos)
+        self.maximum = maximum
+        self.value = 0
+        self.width = width
+        self.height = height
+        self.color = base_color
+
+    def set_value(self, value):
+        self.value = min(0, max(self.maximum, value))
+
+    def set_maximum(self, maximum):
+        self.maximum = maximum
+
+    def __iadd__(self, other):
+        if isinstance(other, int):
+            self.value = min(self.maximum, self.value + other)
+            return self
+        else:
+            raise TypeError("Add only int")
+
+    def __isub__(self, other):
+        if isinstance(other, int):
+            self.value = max(0, self.value - other)
+            return self
+        else:
+            raise TypeError("Sub only int")
+
+    def flip(self, surface, shift):
+        center = self.height // 2
+        for i in range(1, 3):
+            val = 0
+            if (i == 2) and self.value:
+                pygame.draw.circle(surface, (0, 0, 255),
+                                   self.upgrade_coords(center, center + 1) + shift, center // i)
+                val = (self.width - self.height) * (self.value / self.maximum)
+                pygame.draw.line(surface, (0, 0, 255),
+                                 self.upgrade_coords(center, center) + shift,
+                                 self.upgrade_coords(center + val, center) + shift,
+                                 self.height // i)
+            else:
+                pygame.draw.circle(surface, self.color // i,
+                                   self.upgrade_coords(center, center + 1) + shift, center // i)
+            pygame.draw.line(surface, self.color // i,
+                             self.upgrade_coords(val + center, center) + shift,
+                             self.upgrade_coords(self.width - center, center) + shift,
+                             self.height // i)
+            if (i == 2) and (self.value == self.maximum):
+                pygame.draw.circle(surface, (0, 0, 255),
+                                   self.upgrade_coords(self.width - center, center + 1) + shift,
+                                   center // i)
+            else:
+                pygame.draw.circle(surface, self.color // i,
+                                   self.upgrade_coords(self.width - center, center + 1) + shift,
+                                   center // i)
+
+    def is_full(self):
+        return self.value == self.maximum
+
+    def is_empty(self):
+        return self.value == 0

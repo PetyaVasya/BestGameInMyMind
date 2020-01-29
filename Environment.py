@@ -2,11 +2,14 @@ from collections import deque
 
 from Tools import *
 import __main__
+from UI import ProgressBar
+import pygame
 
 
 class Object:
 
-    def __init__(self, hexagon=None):
+    def __init__(self, hexagon=None, player=0):
+        self.player = player
         self.sprite = None
         self.hexagon = None
         if hexagon:
@@ -34,8 +37,8 @@ class Object:
 
 class Hexagon(Object):
 
-    def __init__(self, type, hexagon=None):
-        super().__init__(hexagon)
+    def __init__(self, type, hexagon=None, player=0):
+        super().__init__(hexagon=hexagon, player=player)
         self.selected = False
         self.type = type
 
@@ -58,31 +61,91 @@ class Hexagon(Object):
         if self.hexagon:
             return {
                 (self.hexagon[0] + x // (abs(y) + 1),
-                 self.hexagon[1] + y): __main__.get_game().get_current_fight().field.get_hexagon(
+                 self.hexagon[1] + y): __main__.get_game().get_current_session().field.get_hexagon(
                     self.hexagon[0] + x // (abs(y) + 1), self.hexagon[1] + y) for x in
                 range(-2, 3, 2) for y in
                 range(-1, 2) if (x != 0) and not (x == y == 0)}
         else:
             return {}
 
+    def tick(self):
+        pass
+
 
 class Building(Hexagon):
 
-    def __init__(self, player, building_type, hexagon=None):
-        super().__init__(BUILDING, hexagon)
-        self.player = player
+    def __init__(self, player, building_type, hexagon=None, hp=10):
+        super().__init__(BUILDING, hexagon, player=player)
         self.level = 1
         self.building_type = building_type
         self.set_sprite(load_image(SPRITES_PATHS[building_type]))
+        self.hp = ProgressBar(hp, self.world_position)
+        self.alive = True
 
     def destroy(self):
-        pass
+        self.alive = False
 
     def left_click(self):
-        __main__.get_game().get_current_fight().set_selected(self)
+        __main__.get_game().get_current_session().set_selected(self)
         # self.selected = True
 
+    def repair(self, hp=1):
+        self.hp += hp
+
+    def damage(self, hp=1):
+        self.hp -= hp
+        if self.hp.is_empty():
+            self.destroy()
+
+    def intersect(self, player):
+        if player == self.player:
+            if not self.hp.is_full():
+                self.repair()
+            else:
+                self.man_action()
+        else:
+            self.damage()
+
+    def man_action(self):
+        pass
+
+    def paint(self, surface, shift):
+        pygame.draw.polygon(surface, PLAYER_COLORS[self.player],
+                            [self.world_position + shift + (round(sin(radians(i))) * 32 + 32,
+                                                            round(cos(radians(i)) * 32) + 32) for i
+                             in
+                             range(0, 360, 60)])
+        super().paint(surface, shift)
+        if not self.hp.is_empty() and not self.hp.is_full():
+            self.hp.flip(surface, shift)
     # def upgrade(self):
+
+
+class Project(Building):
+
+    def __init__(self, player, hexagon, building, men):
+        super().__init__(player, PROJECT, hexagon, men)
+        self.building = building
+        self.hp.set_value(0)
+        self.set_sprite(load_image(SPRITES_PATHS[PROJECT]))
+
+    def intersect(self, player):
+        super().intersect(player)
+        if self.hp.is_full():
+            return self.building
+        else:
+            return self
+
+    def paint(self, surface, shift):
+        if not self.alive:
+            return
+        surface.blit(load_image(SPRITES_PATHS[GRASS]), self.world_position + shift)
+        if self.hp.is_empty():
+            self.sprite.set_alpha(127)
+            surface.blit(self.sprite, self.world_position + shift)
+            self.sprite.set_alpha(255)
+        else:
+            surface.blit(self.sprite, self.world_position + shift)
 
 
 class Source(Hexagon):
@@ -90,22 +153,27 @@ class Source(Hexagon):
     def __init__(self, source_type, hexagon=None):
         super().__init__(RESOURCE, hexagon)
         self.source_type = source_type
-        self.current = 0
-        self.need_for_resource = TRADE[source_type]
+        self.progress = ProgressBar(TRADE[source_type], self.world_position)
         self.last_player = None
+        self.set_sprite(load_image(SPRITES_PATHS[source_type]))
 
     def increase(self, player):
-        if (self.last_player != player) and not self.current:
-            self.current += 1
+        if (self.last_player != player) and not self.progress.value:
+            self.progress += 1
             self.last_player = player
         elif self.last_player == player:
-            self.current += 1
+            self.progress += 1
         else:
-            self.current -= 1
-        if not self.current % self.need_for_resource:
-            __main__.get_game().get_current_fight().spawn_recource(*self.hexagon)
-            self.current = 0
+            self.progress -= 1
+        if self.progress.is_full():
+            # __main__.get_game().get_current_session().spawn_recource(*self.hexagon)
+            self.progress.set_value(0)
             self.last_player = None
+
+    def paint(self, surface, shift):
+        super().paint(surface, shift)
+        if self.progress.value:
+            self.progress.flip(surface, shift)
 
 
 class UnitSpawn(Building):
@@ -118,7 +186,7 @@ class UnitSpawn(Building):
     def tick(self):
         self.alpha += 1
         if (self.alpha / FPS) == \
-                __main__.get_game().get_current_fight().get_attributes().spawn_rate:
+                __main__.get_game().get_current_session().get_attributes().spawn_rate:
             if self.path:
                 self.path.spawn_mob()
                 print("SPAWNED")
@@ -145,7 +213,7 @@ class Castle(UnitSpawn):
         super().__init__(player, CASTLE, hexagon)
         path = deque()
         path.append(hexagon)
-        self.path = Path(path)
+        self.path = Path(path, player=self.player)
         self.set_sprite(load_image(SPRITES_PATHS[CASTLE]))
 
     def add_path_point(self, hexagon):
@@ -165,16 +233,24 @@ class Storage(Building):
         self.set_sprite(load_image(SPRITES_PATHS[STORAGE]))
 
 
+class Canteen(Building):
+
+    def __init__(self, player, hexagon=None):
+        super().__init__(player, CANTEEN, hexagon)
+        self.set_sprite(load_image(SPRITES_PATHS[CANTEEN]))
+
+
 class Path(list):
 
-    def __init__(self, points, limit=10):
+    def __init__(self, points, player=0, limit=10):
         super().__init__()
         self.points = points
         self.limit = limit
+        self.player = player
 
     def spawn_mob(self):
         if len(self) < self.limit:
-            self.append(Man(1, 1, self.points.copy()))
+            self.append(Man(1, 1, self.points.copy(), player=self.player))
 
     def add_point(self, point):
         self.points.append(point)
@@ -204,15 +280,16 @@ class Path(list):
 
 class Man(Object):
 
-    def __init__(self, hp, dmg, path):
+    def __init__(self, hp, dmg, path, player=0):
         self.start_hexagon = path.popleft()
-        super().__init__(self.start_hexagon)
-        self.life_time = __main__.get_game().get_current_fight().get_attributes().life_time
+        super().__init__(hexagon=self.start_hexagon, player=player)
+        self.life_time = __main__.get_game().get_current_session().get_attributes().life_time
         self.hp = hp
         self.dmg = dmg
         self.path = path
         self.start = self.world_position
         self.alpha = 0
+        self.alive = True
 
     def set_hexagon(self, hexagon):
         self.hexagon = hexagon
@@ -222,7 +299,7 @@ class Man(Object):
                 1] * STANDARD_HEIGHT + 32)
 
     def kill(self):
-        pass
+        self.alive = False
 
     def move(self):
         end = self.path[0]
@@ -234,11 +311,17 @@ class Man(Object):
             self.start_hexagon = self.path.popleft()
             self.start = end
             self.alpha = 0
+            if __main__.get_game().get_current_session().field.intersect_hexagon(self.start_hexagon,
+                                                                                 self.player):
+                self.kill()
 
     def tick(self):
-        if CANTEEN in __main__.get_game().get_current_fight().field.get_hexagon(
-                *self.hexagon).get_neighbors().values():
-            self.life_time = __main__.get_game().life_time
+        if not self.alive:
+            return False
+        now = __main__.get_game().get_current_session().field.get_hexagon(
+                *self.hexagon)
+        if CANTEEN in map(lambda x: x.building_type, filter(lambda x: Building in x.__class__.__bases__, tuple(now.get_neighbors().values()) + (now,))):
+            self.life_time = __main__.get_game().get_current_session().get_attributes().life_time
         else:
             self.life_time -= RATE
         if self.life_time < 0:
@@ -254,8 +337,9 @@ class Man(Object):
                                         abs(self.start_hexagon[1] - self.path[0][1])) + self.alpha)
 
     def paint(self, surface, shift):
-        return pygame.draw.circle(surface, (0, 0, 0), self.world_position + shift,
-                                  self.life_time * 2)
+        if self.alive:
+            return pygame.draw.circle(surface, (0, 0, 0), self.world_position + shift,
+                                      self.life_time * 2)
 
     def get_hexagon(self):
         return get_hexagon_by_world_pos(self.world_position)
@@ -276,12 +360,17 @@ def create_hexagon(player, hexagon, hex_type, *args):
     elif hex_type == ROAD:
         return Road(player, hexagon)
     elif hex_type == FOREST:
-        return Castle(player, hexagon)
+        return Source(hex_type, hexagon)
     elif hex_type == MINE:
-        return Castle(player, hexagon)
+        return Source(hex_type, hexagon)
     elif hex_type == STORAGE:
         return Castle(player, hexagon)
     elif hex_type == WATER:
-        return Hexagon(hexagon)
+        return Hexagon(hex_type, hexagon)
     elif hex_type == GRASS:
-        return Hexagon(hexagon)
+        return Hexagon(hex_type, hexagon)
+    elif hex_type == PROJECT:
+        return Project(player, hexagon, create_hexagon(player, hexagon, *args),
+                       RESOURCES_FOR_BUILD[args[0]][2])
+    elif hex_type == CANTEEN:
+        return Canteen(player, hexagon)
