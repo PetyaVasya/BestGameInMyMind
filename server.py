@@ -1,47 +1,3 @@
-# import socket
-# from _thread import *
-# import sys
-#
-# server = ""
-# port = 5555
-#
-# s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-#
-# try:
-#     s.bind((server, port))
-# except socket.error as e:
-#     print(e)
-#
-# s.listen(2)
-# print("Waiting for a connection, server started")
-#
-#
-# def threaded_client(conn):
-#     reply = ""
-#
-#     while True:
-#         try:
-#             data = conn.recv(2048)
-#             reply = data.decode("utf-8")
-#
-#             if not data:
-#                 print("Disconnected")
-#                 break
-#             else:
-#                 print(f"Received: {reply}")
-#                 print(f"Sending: {reply}")
-#             conn.sendall(str.encode(reply))
-#         except Exception as e:
-#             print(e)
-#             break
-#
-# while True:
-#     conn, address = s.accept()
-#     print(f"Connected to: {address}")
-#
-#     start_new_thread(threaded_client, (conn,))
-
-
 import socket
 import asyncore
 import select
@@ -71,7 +27,8 @@ def updateWorld(message):
     x = arr[2]
     y = arr[3]
 
-    if playerid == 0: return
+    if playerid == 0:
+        return
 
     minionmap[playerid].x = x
     minionmap[playerid].y = y
