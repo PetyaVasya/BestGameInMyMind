@@ -2,7 +2,7 @@ import pygame
 from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
 from math import cos, sin, radians, ceil
-
+from shapely.geometry import LineString
 from Environment import *
 from Tools import *
 from constants import *
@@ -36,18 +36,17 @@ Json Map Format:
 
 
 class Game:
-    center_x = 0
-    center_y = 0
     hexagons = {}
 
     def __init__(self, screen):
         self.screen = screen
         self.surface = pygame.Surface((width, height), pygame.SRCALPHA)
         self.session = None
+        self.center = pygame.Vector2(0, 0)
 
     def init_pygame_variables(self):
-        self.center_x = width / 2 // STANDARD_WIDTH * STANDARD_WIDTH
-        self.center_y = height / 2 // STANDARD_HEIGHT * STANDARD_HEIGHT
+        self.center = pygame.Vector2(width / 2 // STANDARD_WIDTH * STANDARD_WIDTH,
+                                     height / 2 // STANDARD_HEIGHT * STANDARD_HEIGHT)
         self.hexagons = {GRASS: pygame.transform.scale(pygame.image.load(SPRITES_PATHS[GRASS]),
                                                        (STANDARD_WIDTH, STANDARD_WIDTH)),
                          WATER: pygame.transform.scale(pygame.image.load(SPRITES_PATHS[WATER]),
@@ -101,6 +100,7 @@ class Session:
         self.statusbar.set_bar("wood", 100000000000000000, pygame.image.load(SPRITES_PATHS[WOOD]))
         self.statusbar.set_bar("wood1", 100000000000000000, pygame.image.load(SPRITES_PATHS[WOOD]))
         self.statusbar.set_bar("wood2", 100000000000000000, pygame.image.load(SPRITES_PATHS[WOOD]))
+        self.pseudo_path = None
 
     def generate_map(self, map):
         self.field = Field(self.screen, map)
@@ -120,20 +120,34 @@ class Session:
             return
         clicked_pos = self.field.get_click(pos - self.shift)
         clicked = self.field.get_hexagon(*clicked_pos)
-        print(clicked.type, self.menu.action)
+        if self.game_mode == PATH_MAKING and clicked is not self.selected and (
+                clicked.type != BUILDING or clicked.player != self.get_player() or clicked.building_type == PROJECT):
+            if LineString(list(self.pseudo_path.points) + [clicked_pos]).is_simple:
+                self.pseudo_path.add_point(clicked_pos)
+            return
+        elif self.game_mode == PATH_MAKING:
+            return
         if self.menu.action == DESTROY and clicked.type == BUILDING:
             clicked.destroy()
             self.menu.clear()
-        elif self.menu.action == BUILD and clicked.type == GRASS:
+        elif self.menu.action == BUILD and self.menu.build and clicked.type == GRASS:
             self.field.set_hexagon(self.menu.build, *clicked_pos)
             self.menu.clear()
-        elif self.menu.action == MAKE_PATH and clicked.type == BUILDING:
+        elif self.menu.action == MAKE_PATH and clicked.type == BUILDING and (
+                UnitSpawn in clicked.__class__.__bases__):
             self.game_mode = PATH_MAKING
+            if len(clicked.path) > 1:
+                self.pseudo_path = clicked.path.copy()
+            else:
+                self.pseudo_path = Path(deque([clicked_pos]), player=self.get_player())
+            self.selected = clicked
             self.menu.action = ASK
         elif self.menu.action == DELETE_PATH and isinstance(clicked, Path):
             pass
-        elif not self.menu.action and clicked:
+        elif not self.menu.action and clicked.type == BUILDING:
             self.selected = clicked
+        elif not self.menu.action:
+            self.selected = None
 
     def make_menu(self, hexagon=None):
         if hexagon:
@@ -141,6 +155,15 @@ class Session:
         else:
             # Standard Menu
             pass
+
+    def end_path_making(self, result):
+        if result:
+            self.selected.path = self.pseudo_path.copy()
+        else:
+            pass
+        self.selected = None
+        self.game_mode = NORMAL
+        self.pseudo_path = None
 
     def action_handler(self, action, *attrs):
         if action == MAKE_PATH:
@@ -151,7 +174,9 @@ class Session:
         return not self.finished
 
     def flip(self):
-        self.field.flip(self.shift)
+        self.field.flip(self.shift, self.game_mode != PATH_MAKING)
+        if self.pseudo_path:
+            self.pseudo_path.paint(self.screen, self.shift, True)
         self.menu.flip()
         self.statusbar.flip()
 
@@ -186,22 +211,22 @@ class Field:
         for i in self.map.values():
             i.tick()
 
-    def flip(self, shift=pygame.Vector2(0, 0)):
+    def flip(self, shift=pygame.Vector2(0, 0), show_selected=True):
         # pygame.display.update(self.tiles)
         special = []
         self.tiles = []
         sdv = shift.x // STANDARD_WIDTH, shift.y // STANDARD_HEIGHT
-        for i in range(int(get_game().center_x // STANDARD_WIDTH * -2),
-                       int(get_game().center_x // STANDARD_WIDTH * 2)):
+        for i in range(int(get_game().center.x // STANDARD_WIDTH * -2),
+                       int(get_game().center.x // STANDARD_WIDTH * 2)):
             current = self.map.get(((i - sdv[0]) * 2 + (sdv[1] % 2), -sdv[1]), GRASS)
             if current == GRASS:
                 current_hexagon = get_game().hexagons[GRASS]
                 self.tiles.append(self.screen.blit(current_hexagon,
                                                    (
-                                                       get_game().center_x + i * STANDARD_WIDTH +
+                                                       get_game().center.x + i * STANDARD_WIDTH +
                                                        shift.x % STANDARD_WIDTH + 32 * (
                                                                sdv[1] % 2),
-                                                       get_game().center_y
+                                                       get_game().center.y
                                                        + shift.y % STANDARD_HEIGHT)
                                                    )
                                   )
@@ -209,13 +234,13 @@ class Field:
                     '{}, {}'.format((i - sdv[0]) * 2 + (sdv[1] % 2), -sdv[1]),
                     False, (0, 0, 0))
                 self.screen.blit(textsurface, (
-                    get_game().center_x + i * STANDARD_WIDTH + shift.x % STANDARD_WIDTH + 32 * (
-                            sdv[1] % 2) + 16, get_game().center_y + shift.y % STANDARD_HEIGHT + 32))
+                    get_game().center.x + i * STANDARD_WIDTH + shift.x % STANDARD_WIDTH + 32 * (
+                            sdv[1] % 2) + 16, get_game().center.y + shift.y % STANDARD_HEIGHT + 32))
             else:
                 special.append((int(UnitSpawn in current.__class__.__bases__), current))
-            ma = int(get_game().center_y // STANDARD_WIDTH * 2)
-            for j in range(int(get_game().center_y // STANDARD_WIDTH * -2),
-                           int(get_game().center_y // STANDARD_WIDTH * 2)):
+            ma = int(get_game().center.y // STANDARD_WIDTH * 2)
+            for j in range(int(get_game().center.y // STANDARD_WIDTH * -2),
+                           int(get_game().center.y // STANDARD_WIDTH * 2)):
                 if j:
                     current = self.map.get(
                         ((i - sdv[0]) * 2 + abs(j) - abs(sdv[1]) % ma, j - sdv[1]), GRASS)
@@ -223,10 +248,10 @@ class Field:
                         current_hexagon = get_game().hexagons[GRASS]
                         self.tiles.append(self.screen.blit(current_hexagon,
                                                            (
-                                                               get_game().center_x + i * STANDARD_WIDTH + 32 * (
+                                                               get_game().center.x + i * STANDARD_WIDTH + 32 * (
                                                                        abs(j) - abs(sdv[
                                                                                         1]) % ma) + shift.x % STANDARD_WIDTH,
-                                                               get_game().center_y + (
+                                                               get_game().center.y + (
                                                                        j * STANDARD_HEIGHT) +
                                                                shift.y % STANDARD_HEIGHT)))
                         textsurface = myfont.render(
@@ -235,15 +260,18 @@ class Field:
                             False,
                             (0, 0, 0))
                         self.screen.blit(textsurface,
-                                         (get_game().center_x + i * STANDARD_WIDTH + 32 * (
+                                         (get_game().center.x + i * STANDARD_WIDTH + 32 * (
                                                  abs(j) - abs(sdv[1]) % ma) + shift[
                                               0] % STANDARD_WIDTH + 16,
-                                          get_game().center_y + (j * STANDARD_HEIGHT) + shift[
+                                          get_game().center.y + (j * STANDARD_HEIGHT) + shift[
                                               1] % STANDARD_HEIGHT + 32))
                     else:
                         special.append((int(UnitSpawn in current.__class__.__bases__), current))
         for i in sorted(special, key=lambda x: x[0]):
-            i[1].paint(self.screen, shift)
+            if show_selected and i[1] is get_game().get_current_session().selected:
+                i[1].paint(self.screen, shift, True)
+            else:
+                i[1].paint(self.screen, shift)
 
     def get_click(self, vector2):
         return get_hexagon_by_world_pos(vector2)
@@ -267,7 +295,8 @@ class Field:
                 hexagon_type = hexagon["type"]
             self.map[hexagon_pos] = create_hexagon(
                 hexagon["player"],
-                hexagon_pos, hexagon_type, *(list(attrs.values())[0].values() if hexagon_type == PROJECT else attrs.values()))
+                hexagon_pos, hexagon_type,
+                *(list(attrs.values())[0].values() if hexagon_type == PROJECT else attrs.values()))
 
     def intersect_hexagon(self, pos, player):
         hexagon = self.get_hexagon(*pos)

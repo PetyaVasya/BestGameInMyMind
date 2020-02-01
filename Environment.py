@@ -1,5 +1,4 @@
 from collections import deque
-
 from Tools import *
 import __main__
 from UI import ProgressBar
@@ -20,8 +19,8 @@ class Object:
     def set_hexagon(self, hexagon):
         self.hexagon = hexagon
         self.world_position = pygame.Vector2(
-            __main__.get_game().center_x + hexagon[0] * STANDARD_WIDTH // 2,
-            __main__.get_game().center_y + hexagon[
+            __main__.get_game().center.x + hexagon[0] * STANDARD_WIDTH // 2,
+            __main__.get_game().center.y + hexagon[
                 1] * STANDARD_HEIGHT)
 
     def set_world_position(self, vector2):
@@ -128,9 +127,13 @@ class Project(Building):
         self.building = building
         self.hp.set_value(0)
         self.set_sprite(load_image(SPRITES_PATHS[PROJECT]))
+        self.sprite.set_alpha(127)
 
     def intersect(self, player):
+        was = self.hp.value
         super().intersect(player)
+        if not was and self.hp.value == 1:
+            self.sprite.set_alpha(255)
         if self.hp.is_full():
             return self.building
         else:
@@ -139,13 +142,8 @@ class Project(Building):
     def paint(self, surface, shift):
         if not self.alive:
             return
-        surface.blit(load_image(SPRITES_PATHS[GRASS]), self.world_position + shift)
-        if self.hp.is_empty():
-            self.sprite.set_alpha(127)
-            surface.blit(self.sprite, self.world_position + shift)
-            self.sprite.set_alpha(255)
-        else:
-            surface.blit(self.sprite, self.world_position + shift)
+        surface.blit(__main__.get_game().hexagons[GRASS], self.world_position + shift)
+        surface.blit(self.sprite, self.world_position + shift)
 
 
 class Source(Hexagon):
@@ -189,12 +187,11 @@ class UnitSpawn(Building):
                 __main__.get_game().get_current_session().get_attributes().spawn_rate:
             if self.path:
                 self.path.spawn_mob()
-                print("SPAWNED")
             self.alpha = 0
 
-    def paint(self, surface, shift):
+    def paint(self, surface, shift, show_path=False):
         super().paint(surface, shift)
-        self.path.paint(surface, shift)
+        self.path.paint(surface, shift, show_path)
 
 
 class Road(Building):
@@ -242,7 +239,7 @@ class Canteen(Building):
 
 class Path(list):
 
-    def __init__(self, points, player=0, limit=10):
+    def __init__(self, points=deque(), player=0, limit=10):
         super().__init__()
         self.points = points
         self.limit = limit
@@ -273,9 +270,28 @@ class Path(list):
     def __bool__(self):
         return len(self.points) > 1
 
-    def paint(self, surface, shift):
+    def paint(self, surface, shift, show=False, selected=False):
+        if show:
+            for ind, i in enumerate(self.points):
+                if selected:
+                    pygame.draw.circle(surface, (122, 122, 0), get_hexagon_pos(*i, shift), 7)
+                pygame.draw.circle(surface, (0, 0, 0), get_hexagon_pos(*i, shift), 5)
+            if selected and len(self.points) > 1:
+                pygame.draw.lines(surface, (122, 122, 0), False,
+                                  list(map(lambda x: get_hexagon_pos(*i, shift), self.points)), 6)
+            if len(self.points) > 1:
+                if selected:
+                    pygame.draw.lines(surface, (122, 122, 0), False, list(map(lambda x: get_hexagon_pos(*x, shift), self.points)), 4)
+                pygame.draw.lines(surface, (0, 0, 0), False,
+                                  list(map(lambda x: get_hexagon_pos(*x, shift), self.points)), 4)
         for man in self:
             man.paint(surface, shift)
+
+    def copy(self):
+        return Path(self.points.copy(), self.player, self.limit)
+
+    def __copy__(self):
+        return Path(self.points.copy(), self.player, self.limit)
 
 
 class Man(Object):
@@ -294,8 +310,8 @@ class Man(Object):
     def set_hexagon(self, hexagon):
         self.hexagon = hexagon
         self.world_position = pygame.Vector2(
-            __main__.get_game().center_x + hexagon[0] * STANDARD_WIDTH // 2 + 32,
-            __main__.get_game().center_y + hexagon[
+            __main__.get_game().center.x + hexagon[0] * STANDARD_WIDTH // 2 + 32,
+            __main__.get_game().center.y + hexagon[
                 1] * STANDARD_HEIGHT + 32)
 
     def kill(self):
@@ -304,8 +320,8 @@ class Man(Object):
     def move(self):
         end = self.path[0]
         end = pygame.Vector2(
-            __main__.get_game().center_x + end[0] * STANDARD_WIDTH // 2 + 32,
-            __main__.get_game().center_y + end[1] * STANDARD_HEIGHT + 32)
+            __main__.get_game().center.x + end[0] * STANDARD_WIDTH // 2 + 32,
+            __main__.get_game().center.y + end[1] * STANDARD_HEIGHT + 32)
         self.set_world_position(self.start.lerp(end, self.alpha))
         if self.alpha == 1:
             self.start_hexagon = self.path.popleft()
@@ -338,7 +354,7 @@ class Man(Object):
 
     def paint(self, surface, shift):
         if self.alive:
-            return pygame.draw.circle(surface, (0, 0, 0), self.world_position + shift,
+            return pygame.draw.circle(surface, PLAYER_COLORS[__main__.get_game().get_current_session().get_player()], self.world_position + shift,
                                       self.life_time * 2)
 
     def get_hexagon(self):

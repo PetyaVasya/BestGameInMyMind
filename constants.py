@@ -43,7 +43,11 @@ MAKE_PATH = 21
 DELETE_PATH = 22
 DESTROY = 23
 BACKWARD = 24
+# Menu specials
+ACCEPT = 25
+CANCEL = 26
 ASK = 29
+# -------------
 
 # GAME MODES
 NORMAL = 6
@@ -75,6 +79,8 @@ SPRITES_PATHS = {k: os.path.join(IMAGES_PATH, v) for k, v in
                      DESTROY: "menu_icon/destroy.png",
                      BUILD: "menu_icon/menu_build.png",
                      BACKWARD: "menu_icon/menu_backward.png",
+                     ACCEPT: "menu_icon/accept.png",
+                     CANCEL: "menu_icon/cancel.png",
                  }.items()
                  }
 MENU_PATHS = {k: os.path.join(IMAGES_PATH, v) for k, v in

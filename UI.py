@@ -6,6 +6,7 @@ from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
 import Environment
 from constants import *
+import ptext
 
 
 class UIObject:
@@ -34,7 +35,8 @@ Menu Format
 class GameMenu(UIObject):
     menus = {DEFAULT_MENU: {(0, 2): BUILD},
              BUILD: {(2, 2): CANTEEN, (4, 2): ROAD, (1, 1): STORAGE},
-             TOP_LINE_MENU: {(0, 0): MAKE_PATH, (2, 0): DELETE_PATH, (4, 0): DESTROY}}
+             TOP_LINE_MENU: {(0, 0): MAKE_PATH, (2, 0): DELETE_PATH, (4, 0): DESTROY},
+             ASK: {(0, 2): ACCEPT, (2, 2): CANCEL}}
 
     def __init__(self, screen, pos=pygame.Vector2(0, 0), width=800, height=3):
         super().__init__(pos)
@@ -47,7 +49,7 @@ class GameMenu(UIObject):
         self.hexagons = {i: pygame.transform.scale(
             pygame.image.load(SPRITES_PATHS[i]),
             (STANDARD_WIDTH, STANDARD_WIDTH)) for i in
-            (MENU_BACKGROUND, DESTROY, DELETE_PATH, MAKE_PATH, BACKWARD, BUILD)
+            (MENU_BACKGROUND, DESTROY, DELETE_PATH, MAKE_PATH, BACKWARD, BUILD, ACCEPT, CANCEL)
         }
         self.hexagons.update({
             i: pygame.transform.scale(
@@ -57,6 +59,7 @@ class GameMenu(UIObject):
         })
 
     def flip(self, menu_type=None):
+        # print(self.action)
         max_right = self.width // 64
         r_shift = (self.width - max_right * 64) / 2
         for i in range(-1, max_right + 2):
@@ -74,8 +77,9 @@ class GameMenu(UIObject):
                     rect[1] = STANDARD_HEIGHT
                 elif j == 3:
                     rect[3] = STANDARD_HEIGHT // 3
-                if (self.action and self.action not in self.menus[TOP_LINE_MENU].values()) and (
-                        (i * 2 - (j % 2), j) == (0, 2)):
+
+                if self.action not in self.menus[TOP_LINE_MENU].values() and (
+                        (i * 2 - (j % 2), j) == (0, 2)) and self.action and self.action != ASK:
                     current = BACKWARD
                 else:
                     current = self.menus.get(self.action, self.menus[DEFAULT_MENU]).get(
@@ -118,7 +122,12 @@ class GameMenu(UIObject):
         if action:
             self.action = action
             self.build = None
-        if self.action and (current == (0, 2)):
+            return
+        action = self.menus[ASK].get(current, None)
+        if self.action == ASK and action:
+            __main__.get_game().session.end_path_making(action == ACCEPT)
+            self.action = None
+        elif self.action and (current == (0, 2)):
             self.clear()
         elif self.action == BUILD:
             build = self.menus[BUILD].get(current, None)
@@ -278,3 +287,17 @@ class ProgressBar(UIObject):
 
     def is_empty(self):
         return self.value == 0
+
+
+class Tip(UIObject):
+
+    def __init__(self, pos=pygame.Vector2(0, 0), title="", text=""):
+        super().__init__(pos)
+        self.set_data(title, text)
+
+    def set_data(self, title, text):
+        self.title = ptext.getsurf(title)
+        self.text = ptext.getsurf(text)
+
+    def paint(self):
+        pass
