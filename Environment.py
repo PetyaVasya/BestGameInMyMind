@@ -1,8 +1,10 @@
 from collections import deque
-from Tools import *
-import __main__
+from Tools import load_image
+import Game
+from constants import *
 from UI import ProgressBar
 import pygame
+from math import cos, sin, radians
 
 
 class Object:
@@ -18,14 +20,15 @@ class Object:
 
     def set_hexagon(self, hexagon):
         self.hexagon = hexagon
+        game = Game.Game()
         self.world_position = pygame.Vector2(
-            __main__.get_game().center.x + hexagon[0] * STANDARD_WIDTH // 2,
-            __main__.get_game().center.y + hexagon[
+            game.center.x + hexagon[0] * STANDARD_WIDTH // 2,
+            game.center.y + hexagon[
                 1] * STANDARD_HEIGHT)
 
     def set_world_position(self, vector2):
         self.world_position = vector2
-        self.hexagon = get_hexagon_by_world_pos(self.world_position)
+        self.hexagon = Game.get_hexagon_by_world_pos(self.world_position)
 
     def set_sprite(self, sprite):
         if sprite:
@@ -60,7 +63,7 @@ class Hexagon(Object):
         if self.hexagon:
             return {
                 (self.hexagon[0] + x // (abs(y) + 1),
-                 self.hexagon[1] + y): __main__.get_game().get_current_session().field.get_hexagon(
+                 self.hexagon[1] + y): Game.Game().session.field.get_hexagon(
                     self.hexagon[0] + x // (abs(y) + 1), self.hexagon[1] + y) for x in
                 range(-2, 3, 2) for y in
                 range(-1, 2) if (x != 0) and not (x == y == 0)}
@@ -85,7 +88,7 @@ class Building(Hexagon):
         self.alive = False
 
     def left_click(self):
-        __main__.get_game().get_current_session().set_selected(self)
+        Game.Game().session.set_selected(self)
         # self.selected = True
 
     def repair(self, hp=1):
@@ -142,7 +145,7 @@ class Project(Building):
     def paint(self, surface, shift):
         if not self.alive:
             return
-        surface.blit(__main__.get_game().hexagons[GRASS], self.world_position + shift)
+        surface.blit(Game.Game().hexagons[GRASS], self.world_position + shift)
         surface.blit(self.sprite, self.world_position + shift)
 
 
@@ -184,7 +187,7 @@ class UnitSpawn(Building):
     def tick(self):
         self.alpha += 1
         if (self.alpha / FPS) == \
-                __main__.get_game().get_current_session().get_attributes().spawn_rate:
+                Game.Game().session.attributes.spawn_rate:
             if self.path:
                 self.path.spawn_mob()
             self.alpha = 0
@@ -274,16 +277,16 @@ class Path(list):
         if show:
             for ind, i in enumerate(self.points):
                 if selected:
-                    pygame.draw.circle(surface, (122, 122, 0), get_hexagon_pos(*i, shift), 7)
-                pygame.draw.circle(surface, (0, 0, 0), get_hexagon_pos(*i, shift), 5)
+                    pygame.draw.circle(surface, (122, 122, 0), Game.get_hexagon_pos(*i, shift), 7)
+                pygame.draw.circle(surface, (0, 0, 0), Game.get_hexagon_pos(*i, shift), 5)
             if selected and len(self.points) > 1:
                 pygame.draw.lines(surface, (122, 122, 0), False,
-                                  list(map(lambda x: get_hexagon_pos(*i, shift), self.points)), 6)
+                                  list(map(lambda x: Game.get_hexagon_pos(*i, shift), self.points)), 6)
             if len(self.points) > 1:
                 if selected:
-                    pygame.draw.lines(surface, (122, 122, 0), False, list(map(lambda x: get_hexagon_pos(*x, shift), self.points)), 4)
+                    pygame.draw.lines(surface, (122, 122, 0), False, list(map(lambda x: Game.get_hexagon_pos(*x, shift), self.points)), 4)
                 pygame.draw.lines(surface, (0, 0, 0), False,
-                                  list(map(lambda x: get_hexagon_pos(*x, shift), self.points)), 4)
+                                  list(map(lambda x: Game.get_hexagon_pos(*x, shift), self.points)), 4)
         for man in self:
             man.paint(surface, shift)
 
@@ -299,7 +302,7 @@ class Man(Object):
     def __init__(self, hp, dmg, path, player=0):
         self.start_hexagon = path.popleft()
         super().__init__(hexagon=self.start_hexagon, player=player)
-        self.life_time = __main__.get_game().get_current_session().get_attributes().life_time
+        self.life_time = Game.Game().session.attributes.life_time
         self.hp = hp
         self.dmg = dmg
         self.path = path
@@ -309,9 +312,10 @@ class Man(Object):
 
     def set_hexagon(self, hexagon):
         self.hexagon = hexagon
+        game = Game.Game()
         self.world_position = pygame.Vector2(
-            __main__.get_game().center.x + hexagon[0] * STANDARD_WIDTH // 2 + 32,
-            __main__.get_game().center.y + hexagon[
+            game.center.x + hexagon[0] * STANDARD_WIDTH // 2 + 32,
+            game.center.y + hexagon[
                 1] * STANDARD_HEIGHT + 32)
 
     def kill(self):
@@ -319,25 +323,26 @@ class Man(Object):
 
     def move(self):
         end = self.path[0]
+        game = Game.Game()
         end = pygame.Vector2(
-            __main__.get_game().center.x + end[0] * STANDARD_WIDTH // 2 + 32,
-            __main__.get_game().center.y + end[1] * STANDARD_HEIGHT + 32)
+            game.center.x + end[0] * STANDARD_WIDTH // 2 + 32,
+            game.center.y + end[1] * STANDARD_HEIGHT + 32)
         self.set_world_position(self.start.lerp(end, self.alpha))
         if self.alpha == 1:
             self.start_hexagon = self.path.popleft()
             self.start = end
             self.alpha = 0
-            if __main__.get_game().get_current_session().field.intersect_hexagon(self.start_hexagon,
-                                                                                 self.player):
+            if game.session.field.intersect_hexagon(self.start_hexagon, self.player):
                 self.kill()
 
     def tick(self):
         if not self.alive:
             return False
-        now = __main__.get_game().get_current_session().field.get_hexagon(
+        game = Game.Game()
+        now = game.session.field.get_hexagon(
                 *self.hexagon)
         if CANTEEN in map(lambda x: x.building_type, filter(lambda x: Building in x.__class__.__bases__, tuple(now.get_neighbors().values()) + (now,))):
-            self.life_time = __main__.get_game().get_current_session().get_attributes().life_time
+            self.life_time = game.session.attributes.life_time
         else:
             self.life_time -= RATE
         if self.life_time < 0:
@@ -354,11 +359,11 @@ class Man(Object):
 
     def paint(self, surface, shift):
         if self.alive:
-            return pygame.draw.circle(surface, PLAYER_COLORS[__main__.get_game().get_current_session().get_player()], self.world_position + shift,
+            return pygame.draw.circle(surface, PLAYER_COLORS[Game.Game().session.player], self.world_position + shift,
                                       self.life_time * 2)
 
     def get_hexagon(self):
-        return get_hexagon_by_world_pos(self.world_position)
+        return Game.get_hexagon_by_world_pos(self.world_position)
 
 
 class Deliveryman(Man):

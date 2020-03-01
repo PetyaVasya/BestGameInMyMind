@@ -101,3 +101,7 @@ TRADE = {FOREST: 10,
 # Font sizes
 STANDARD_FONT = 22
 STATUSBAR_FONT = 22
+
+# Hex Tips
+tips = {CANTEEN: {"title": "Canteen",
+                  "text": "When man run nearby he restore his hungry parameter"}}

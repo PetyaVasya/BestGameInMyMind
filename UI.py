@@ -1,12 +1,14 @@
 from math import sin, radians, cos
 
 import pygame
-import __main__
 from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
+
 import Environment
 from constants import *
+from decorators import *
 import ptext
+import Game
 
 
 class UIObject:
@@ -14,11 +16,9 @@ class UIObject:
     def __init__(self, pos=pygame.Vector2(0, 0)):
         self.world_position = pos
 
-    def set_world_position(self, x, y):
-        self.world_position = pygame.Vector2(x, y)
-
-    def set_world_position_vector(self, pos):
+    def set_world_position(self, pos):
         self.world_position = pos
+        return self
 
     def upgrade_coords(self, *args):
         return self.world_position + (args[0] if len(args) == 1 else args)
@@ -116,6 +116,11 @@ class GameMenu(UIObject):
             else:
                 return current[0], current[1]
 
+    def get_hexagon_by_pos(self, pos):
+        click_hex = self.get_click(pos)
+        return self.menus.get(self.action, self.menus[TOP_LINE_MENU]).get(click_hex, self.menus[
+            DEFAULT_MENU].get(click_hex, None))
+
     def on_click(self, vector2):
         current = self.get_click(vector2)
         action = self.menus[TOP_LINE_MENU].get(current, None)
@@ -124,21 +129,22 @@ class GameMenu(UIObject):
             self.build = None
             return
         action = self.menus[ASK].get(current, None)
+        game = Game.Game()
         if self.action == ASK and action:
-            __main__.get_game().session.end_path_making(action == ACCEPT)
+            game.session.end_path_making(action == ACCEPT)
             self.action = None
         elif self.action and (current == (0, 2)):
             self.clear()
         elif self.action == BUILD:
             build = self.menus[BUILD].get(current, None)
             if build:
-                self.build = Environment.create_hexagon(__main__.get_game().session.get_player(),
+                self.build = Environment.create_hexagon(game.session.player,
                                                         current, PROJECT, build)
         elif self.menus[DEFAULT_MENU].get(current, None) == BUILD:
             self.action = BUILD
             build = self.menus[BUILD].get(current, None)
             if build:
-                self.build = Environment.create_hexagon(__main__.get_game().session.get_player(),
+                self.build = Environment.create_hexagon(game.session.player,
                                                         current, PROJECT, build)
         else:
             self.action = self.menus[DEFAULT_MENU].get(current, None)
@@ -289,15 +295,66 @@ class ProgressBar(UIObject):
         return self.value == 0
 
 
-class Tip(UIObject):
+class Tip:
 
-    def __init__(self, pos=pygame.Vector2(0, 0), title="", text=""):
-        super().__init__(pos)
-        self.set_data(title, text)
+    def __init__(self, title="", text="", width=300, background=(0, 0, 0),
+                 border_color=(255, 0, 0)):
+        self.title = title
+        self.text = text
+        self.width = width
+        self.background_color = background
+        self.border_color = border_color
+        self.border_width = 3
+        self.title_surf = ptext.getsurf(title, width=width, bold=True, underline=True)
+        self.text_surf = ptext.getsurf(text, width=width)
+        self.height = self.title_surf.get_height() + self.text_surf.get_height()
 
     def set_data(self, title, text):
-        self.title = ptext.getsurf(title)
-        self.text = ptext.getsurf(text)
+        # game = Game.Game()
+        self.title_surf = ptext.getsurf(title, width=self.width, bold=True, underline=True)
+        self.text_surf = ptext.getsurf(text, width=self.width)
+        self.height = self.title_surf.get_height() + self.text_surf.get_height()
 
-    def paint(self):
+    def text_to_size(self, width, height):
         pass
+
+    def paint(self, screen, pos):
+        paint_pos = pygame.Vector2(pos)
+        if pos.y + self.height + 2 * self.border_width > screen.get_height():
+            paint_pos.y -= self.height + 2 * self.border_width
+        if pos.x + self.width + 2 * self.border_width > screen.get_width():
+            paint_pos.y -= self.width + 2 * self.border_width
+        pygame.draw.rect(screen, self.background_color,
+                         [paint_pos.x + self.border_width - 1, paint_pos.y + self.border_width - 1,
+                          self.width + 2,
+                          self.height + 2])
+        pygame.draw.rect(screen, self.border_color,
+                         [paint_pos.x, paint_pos.y, self.width + 2 * self.border_width,
+                          self.height + 2 * self.border_width], self.border_width)
+        screen.blit(self.title_surf, paint_pos + [self.border_width] * 2)
+        screen.blit(self.text_surf, paint_pos + [self.border_width,
+                                                 self.border_width + self.title_surf.get_height()])
+
+
+class Button(UIObject):
+
+    def __init__(self, screen, pos=pygame.Vector2(0, 0)):
+        super().__init__()
+        self.screen = screen
+        self.background = None
+        self.action = None
+
+    def set_background(self, surface):
+        self.background = surface
+        return self
+
+    def set_action(self, action):
+        self.action = action
+        return self
+
+    @zero_args
+    def get_click(self):
+        return self.action()
+
+    def flip(self):
+        self.screen.blit(self.background, self.world_position)
