@@ -25,7 +25,7 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                game.on_click(pygame.Vector2(event.pos))
+                game.get_click(pygame.Vector2(event.pos))
                 pass
         pressed = pygame.key.get_pressed()
         game.buttons_handler(pressed)

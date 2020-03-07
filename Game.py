@@ -7,8 +7,9 @@ from shapely.geometry.polygon import Polygon
 from Environment import Castle, Canteen, Storage, Project, Source, create_hexagon, UnitSpawn, Path
 from constants import *
 from Settings import SessionAttributes
-from UI import Tip, GameMenu, Statusbar
+from UI import Tip, GameMenu, Statusbar, Button
 from math import sin, cos, radians
+from Tools import *
 import ptext
 
 '''
@@ -52,52 +53,72 @@ class Game(metaclass=SingletonMeta):
     hexagons = {}
 
     def __init__(self):
-        self.screen = None
         self.surface = None
         # self.surface = pygame.Surface((screen.get_width(), screen.get_height()), pygame.SRCALPHA)
         self.session = None
         self.center = pygame.Vector2(0, 0)
         self.tips = {k: Tip(v["title"], v["text"]) for k, v in tips.items()}
+        self.screen = ScreensSystem(None)
 
     def set_surface(self, screen):
-        self.screen = screen
         self.surface = screen
+        self.screen.main_surface = screen
 
     def init_pygame_variables(self):
-        self.center = pygame.Vector2(self.screen.get_width() / 2 // STANDARD_WIDTH * STANDARD_WIDTH,
-                                     self.screen.get_height() / 2 // STANDARD_HEIGHT * STANDARD_HEIGHT)
+        self.center = pygame.Vector2(
+            self.surface.get_width() / 2 // STANDARD_WIDTH * STANDARD_WIDTH,
+            self.surface.get_height() / 2 // STANDARD_HEIGHT * STANDARD_HEIGHT)
         self.hexagons = {GRASS: pygame.transform.scale(pygame.image.load(SPRITES_PATHS[GRASS]),
                                                        (STANDARD_WIDTH, STANDARD_WIDTH)),
                          WATER: pygame.transform.scale(pygame.image.load(SPRITES_PATHS[WATER]),
                                                        (STANDARD_WIDTH, STANDARD_WIDTH)),
                          }
 
+        def solo():
+            self.screen.current = "main"
+
+        def fight():
+            self.screen.current = "online"
+
+        n_size = self.surface.get_size()
+        size = pygame.Vector2(n_size)
+        self.screen.add_screen("main", Screen(n_size) \
+                               .add_object(pygame.Vector2(0, 0),
+                                           pygame.transform.scale(load_image("grass.png"), n_size)) \
+                               .add_object(pygame.Vector2(size.x * 0.6, size.y * 0.3),
+                                           Button(None, None).set_background(
+                                               ptext.getsurf("Одиночная игра")).set_action(solo)) \
+                               .add_object(pygame.Vector2(size.x * 0.6, size.y * 0.4),
+                                           Button(None, None).set_background(
+                                               ptext.getsurf("Сетевая игра")).set_action(fight)))
+
     def flip(self):
+        self.screen.flip()
         # self.surface.fill((0, 0, 0))
-        if self.session:
-            self.session.flip()
-        self.screen.blit(pygame.transform.scale(self.surface, self.surface.get_size()), (0, 0))
+        # if self.session:
+        #     self.session.flip()
+        # self.screen.blit(pygame.transform.scale(self.surface, self.surface.get_size()), (0, 0))
 
     def mouse_flip(self, pos):
         if self.session:
             self.session.mouse_flip(pos)
+        self.screen.mouse_flip(pos)
 
     def tick(self):
         if self.session:
             self.session.tick()
 
     def buttons_handler(self, events):
-        if self.session:
-            self.session.increase_shift(-10 * events[pygame.K_a] + 10 * events[pygame.K_d],
-                                        -10 * events[pygame.K_w] + 10 * events[pygame.K_s])
+        self.screen.check_pressed(events)
 
-    def on_click(self, mouse_pos):
-        if self.session:
-            self.session.on_click(mouse_pos)
+    def get_click(self, mouse_pos):
+        self.screen.get_click(mouse_pos)
 
     def create_fight(self, map):
         self.session = Session(self.surface)
         self.session.generate_map(map)
+        self.screen.add_screen("online", Screen(self.surface.get_size()).add_object((0, 0),
+                                                                                    self.session))
 
 
 class Session:
@@ -126,7 +147,7 @@ class Session:
         self.shift.x -= x
         self.shift.y -= y
 
-    def on_click(self, pos):
+    def get_click(self, pos):
         if pos.y < 20:
             return
         elif pos.y > (self.screen.get_height() - STANDARD_WIDTH * 2.5):
@@ -206,6 +227,13 @@ class Session:
             self.menu.build.set_hexagon(self.field.get_click(pos - self.shift))
             # pygame.mouse.set_visible(False)
             self.menu.build.paint(self.screen, self.shift)
+
+    def check_pressed(self, pressed):
+        self.increase_shift(-10 * pressed[pygame.K_a] + 10 * pressed[pygame.K_d],
+                            -10 * pressed[pygame.K_w] + 10 * pressed[pygame.K_s])
+
+    def mouse_up(self):
+        self.screen.mouse_up()
 
     def tick(self):
         self.field.tick()
@@ -293,6 +321,12 @@ class Field:
     def get_click(self, vector2):
         return get_hexagon_by_world_pos(vector2)
 
+    def check_pressed(self, pressed):
+        pass
+
+    def mouse_flip(self, pos):
+        pass
+
     def get_hexagon(self, x, y):
         return self.map.get((x, y),
                             create_hexagon(Game().session.player, (x, y),
@@ -348,7 +382,17 @@ class ScreensSystem:
 
     def add_screen(self, name, screen):
         self.screens[name] = screen
+        if len(self.screens) == 1:
+            self.current = name
         return self
+
+    def remove_screen(self, name):
+        del self.screens[self.current]
+        if self.current == name:
+            if len(self.screens):
+                self.current = list(self.screens.values())[0]
+            else:
+                self.current = None
 
     def flip(self):
         if self.current:
@@ -357,6 +401,18 @@ class ScreensSystem:
 
     def get_click(self, pos):
         return self.screens[self.current].get_click(pos)
+
+    def mouse_flip(self, pos):
+        return self.screens[self.current].mouse_flip(pos)
+
+    def check_pressed(self, pressed):
+        return self.screens[self.current].check_pressed(pressed)
+
+    def mouse_up(self):
+        return self.screens[self.current].mouse_up()
+
+    def tick(self, delta):
+        return self.screens[self.current].tick(delta)
 
 
 class Screen:
@@ -373,8 +429,11 @@ class Screen:
 
     def add_object(self, pos, element):
         self.elements.append((element, pos))
-        element.set_world_position(pos)
-        element.screen = self.surface
+        try:
+            element.set_world_position(pos)
+            element.screen = self.surface
+        except AttributeError as e:
+            pass
         return self
 
     def remove_object(self, element):
@@ -384,16 +443,38 @@ class Screen:
         return self
 
     def get_click(self, vector2):
-        for i in self.elements:
-            if i[0].screen.get_rect().collidepoint(vector2):
+        for i in self.elements[::-1]:
+            if not isinstance(i[0], (pygame.sprite.Sprite, pygame.Rect, pygame.Surface)) and\
+                    i[0].screen.get_rect().collidepoint(vector2):
                 return i[0].get_click(vector2)
+
+    def mouse_flip(self, vector2):
+        for i in self.elements[::-1]:
+            if not isinstance(i[0], (pygame.sprite.Sprite, pygame.Rect, pygame.Surface)) and \
+                    i[0].screen.get_rect().collidepoint(vector2):
+                return i[0].mouse_flip(vector2)
+
+    def check_pressed(self, pressed):
+        for i in self.elements[::-1]:
+            if not isinstance(i[0], (pygame.sprite.Sprite, pygame.Rect, pygame.Surface)):
+                return i[0].check_pressed(pressed)
+
+    def mouse_up(self):
+        for i in self.elements[::-1]:
+            if not isinstance(i[0], (pygame.sprite.Sprite, pygame.Rect, pygame.Surface)):
+                return i[0].mouse_up()
 
     def flip(self):
         for i in self.elements:
-            if isinstance(i[0], pygame.sprite.Sprite) or isinstance(i[0], pygame.Rect) or isinstance(i[0], pygame.Surface):
+            if isinstance(i[0], (pygame.sprite.Sprite, pygame.Rect, pygame.Surface)):
                 self.surface.blit(*i)
             else:
                 i[0].flip()
+
+    def tick(self, delta):
+        for i in self.elements:
+            i[0].tick(delta)
+
 
 # Screen(size).add_object(size * [0.6, 0.3], ptext.getsurf("Одиночная игра"))\
 #     .add_object(size * [0.6, 0.4], ptext.getsurf("Многопользовательская игра"))\

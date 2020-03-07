@@ -1,8 +1,11 @@
 import os
 
 # Buttons id
+import pygame
+
 LEFT_CLICK = 1
 RIGHT_CLICK = 2
+# -------------
 
 # Hex types
 GRASS = 101
@@ -10,6 +13,7 @@ WATER = 102
 BUILDING = 103
 RESOURCE = 104
 MENU = 105
+# -------------
 
 # Menu background
 MENU_BACKGROUND = 1051
@@ -17,6 +21,7 @@ DEFAULT_MENU = 1052
 BUILD_MENU = 1053
 UPGRADE_MENU = 1054
 TOP_LINE_MENU = 1055
+# -------------
 
 # Building types
 CASTLE = 1031
@@ -24,18 +29,22 @@ STORAGE = 1032
 ROAD = 1033
 CANTEEN = 1034
 PROJECT = 1039
+# -------------
 
 # Storage types
 WOODEN = 81
 STONE = 82
+# -------------
 
 # Resources types
 FOREST = 1041
 MINE = 1042
+# -------------
 
 # Resource
 WOOD = 1043
 ROCK = 1044
+# -------------
 
 # Game Actions
 BUILD = 20
@@ -52,6 +61,60 @@ ASK = 29
 # GAME MODES
 NORMAL = 6
 PATH_MAKING = 7
+# -------------
+
+# Elements Position
+TOP = 810
+CENTER = 811
+BOTTOM = 812
+BETWEEN = 813
+LEFT = 814
+MIDDLE = 815
+RIGHT = 816
+TOP_LEFT = 817
+TOP_RIGHT = 818
+BOTTOM_LEFT = 819
+BOTTOM_RIGHT = 820
+# -------------
+
+# Orientations
+VERTICAL = 10000
+HORIZONTAL = 100001
+# -------------
+
+# Dialog buttons
+OK_BUTTON = 12  # 1100
+YES_BUTTON = 4  # 100
+NO_BUTTON = 2  # 10
+CANCEL_BUTTON = 1  # 1
+# -------------
+
+# Specials
+
+
+class TRANSPARENT:
+
+    def __isub__(self, other):
+        return self
+
+    def __add__(self, other):
+        return self
+
+    def __iadd__(self, other):
+        return self
+
+    def __sub__(self, other):
+        return self
+
+    def __mul__(self, other):
+        return self
+
+    def __truediv__(self, other):
+        return self
+
+    def __floordiv__(self, other):
+        return self
+# -------------
 
 # Game presets
 FPS = 30
@@ -105,3 +168,6 @@ STATUSBAR_FONT = 22
 # Hex Tips
 tips = {CANTEEN: {"title": "Canteen",
                   "text": "When man run nearby he restore his hungry parameter"}}
+
+# Colors
+BASE_COLOR = pygame.Vector3(63, 65, 67)
