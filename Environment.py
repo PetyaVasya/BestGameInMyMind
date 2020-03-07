@@ -387,7 +387,9 @@ def create_hexagon(player, hexagon, hex_type, *args):
     elif hex_type == STORAGE:
         return Castle(player, hexagon)
     elif hex_type == WATER:
-        return Hexagon(hex_type, hexagon)
+        n = Hexagon(hex_type, hexagon)
+        n.set_sprite(load_image(SPRITES_PATHS[hex_type]))
+        return n
     elif hex_type == GRASS:
         return Hexagon(hex_type, hexagon)
     elif hex_type == PROJECT:

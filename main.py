@@ -6,7 +6,7 @@ import ptext
 
 from constants import FPS
 
-map = json.loads(open("test.json").read())
+map = json.loads(open("asd.json").read())
 
 
 def main():

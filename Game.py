@@ -84,12 +84,12 @@ class Game(metaclass=SingletonMeta):
         size = pygame.Vector2(n_size)
         self.screen.add_screen("main", Screen(n_size) \
                                .add_object(pygame.Vector2(0, 0),
-                                           pygame.transform.scale(load_image("grass.png"), n_size)) \
+                                           pygame.transform.scale(load_image("images/earth/grass.png"), n_size)) \
                                .add_object(pygame.Vector2(size.x * 0.6, size.y * 0.3),
-                                           Button(None, None).set_background(
+                                           Button(None).set_background(
                                                ptext.getsurf("Одиночная игра")).set_action(solo)) \
                                .add_object(pygame.Vector2(size.x * 0.6, size.y * 0.4),
-                                           Button(None, None).set_background(
+                                           Button(None).set_background(
                                                ptext.getsurf("Сетевая игра")).set_action(fight)))
 
     def flip(self):
@@ -125,7 +125,7 @@ class Session:
 
     def __init__(self, screen):
         self.field = None
-        self.screen = screen
+        self._screen = screen
         self.attributes = SessionAttributes()
         self.finished = False
         self.shift = pygame.Vector2(0, 0)
@@ -139,6 +139,16 @@ class Session:
         self.statusbar.set_bar("wood2", 100000000000000000, pygame.image.load(SPRITES_PATHS[WOOD]))
         self.pseudo_path = None
         self.player = 1
+
+    @property
+    def screen(self):
+        return self._screen
+
+    @screen.setter
+    def screen(self, value):
+        self._screen = value
+        if self.field:
+            self.field.screen = value
 
     def generate_map(self, map):
         self.field = Field(self.screen, map)
@@ -257,6 +267,7 @@ class Field:
 
     def flip(self, shift=pygame.Vector2(0, 0), show_selected=True):
         # pygame.display.update(self.tiles)
+        print(self.screen)
         special = []
         self.tiles = []
         sdv = shift.x // STANDARD_WIDTH, shift.y // STANDARD_HEIGHT
@@ -430,8 +441,8 @@ class Screen:
     def add_object(self, pos, element):
         self.elements.append((element, pos))
         try:
-            element.set_world_position(pos)
             element.screen = self.surface
+            element.set_world_position(pos)
         except AttributeError as e:
             pass
         return self
