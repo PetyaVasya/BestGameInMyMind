@@ -82,6 +82,8 @@ VERTICAL = 10000
 HORIZONTAL = 100001
 # -------------
 
+#
+
 # Dialog buttons
 OK_BUTTON = 12  # 1100
 YES_BUTTON = 4  # 100

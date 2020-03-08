@@ -6,6 +6,7 @@ from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
 
 import Environment
+from InputTypes import *
 from constants import *
 from decorators import *
 import ptext
@@ -28,12 +29,28 @@ class UIObject:
     def upgrade_coords(self, *args):
         return self.world_position + (args[0] if len(args) == 1 else args)
 
-    def set_size(self, width, height):
-        self.rect = pygame.Rect(0, 0, width, height)
+    @property
+    def size(self):
+        return self.rect.w, self.rect.h
 
-    def set_width(self, width):
+    @size.setter
+    def size(self, value):
+        self.rect.w = value[0]
+        self.rect.h = value[1]
+
+    @property
+    def width(self):
+        return self.rect.w
+
+    @width.setter
+    def width(self, width):
         self.rect.width = width
 
+    @property
+    def height(self):
+        return self.rect.h
+
+    @height.setter
     def set_height(self, height):
         self.rect.height = height
 
@@ -50,6 +67,9 @@ class UIObject:
         pass
 
     def tick(self, delta):
+        pass
+
+    def k_down(self, event):
         pass
 
 
@@ -967,12 +987,13 @@ class Image(UIObject, Drawable):
 
 class InputField(UIObject, Drawable):
 
-    def __init__(self, screen, pos=pygame.Vector2, width=100, height=50, border=5):
+    def __init__(self, screen, pos=pygame.Vector2, width=100, height=50, border=5, type=StringType):
         super().__init__(pos, width, height)
         self.screen = screen
         self._border = border
         self.text_surf = pygame.Surface((width - border * 2 - 10, height - border * 2 - 10))
-        self.text = ""
+        self.text = type()
+        self.active = False
 
     @property
     def border(self):
@@ -990,10 +1011,197 @@ class InputField(UIObject, Drawable):
 
     def flip(self):
         self.draw_rect(BASE_COLOR // 2, self.rect)
-        self.draw_rect(pygame.Color("White"), self.text_surf)
-        
+        self.draw_rect(pygame.Color("White"), self.text_surf.get_rect())
+        ptext.draw(str(self.text), (self.border * 2 - 10, self.border * 2 - 10), surf=self.text_surf)
+
+    @click_in(True)
+    def get_click(self, pos: pygame.Vector2, click):
+        if click:
+            self.active = True
+        else:
+            self.active = False
+
+    def k_down(self, event):
+        if event.key == pygame.K_BACKSPACE:
+            self.text = self.text[:-1]
+        else:
+            text += event.unicode
+
+
+class Form(UIObject, Drawable):
+
+    def __init__(self, screen, pos=pygame.Vector2(), width=0, height=0, color=BASE_COLOR, border=5):
+        super().__init__(pos, width, height)
+        self.color = color
+        self._screen = screen
+        self.elements = []
+        self.border = border
+        self.inner_rect = pygame.Rect(*pos, width - border * 2, height - border * 2)
+
+    @property
+    def width(self):
+        return UIObject.width.fget(self)
+
+    @width.setter
+    def width(self, value):
+        UIObject.width.fset(self, value)
+        self.inner_rect.w = value - self.border * 2
+
+    @property
+    def height(self):
+        return UIObject.height.fget(self)
+
+    @height.setter
+    def height(self, value):
+        UIObject.height.fset(self, value)
+        self.inner_rect.h = value - self.border * 2
+
+    @property
+    def size(self):
+        return UIObject.size.fget(self)
+
+    @size.setter
+    def size(self, value):
+        UIObject.size.fset(self, value)
+        self.inner_rect.w = value[0] - self.border * 2
+        self.inner_rect.h = value[1] - self.border * 2
+
+    @property
+    def screen(self):
+        return self._screen
+
+    @screen.setter
+    def screen(self, value):
+        self._screen = value
+        for e in self.elements:
+            e.screen = value
+
+    def get_click(self, pos: pygame.Vector2):
+        for e in self.elements:
+            e.get_click(pos)
+
+    def k_down(self, event):
+        for e in self.elements:
+            e.k_down(event)
+
+    @zero_args
+    def flip(self):
+        self.draw_rect(self.color // 2, self.rect)
+        self.draw_rect(self.color, self.inner_rect)
+        for e in self.elements:
+            e.flip()
 
 
 class Frame(UIObject):
     pass
 
+
+class ScreensSystem:
+
+    def __init__(self, surface):
+        self.main_surface = surface
+        self.screens = {}
+        self.current = None
+
+    def add_screen(self, name, screen):
+        self.screens[name] = screen
+        if len(self.screens) == 1:
+            self.current = name
+        return self
+
+    def remove_screen(self, name):
+        del self.screens[self.current]
+        if self.current == name:
+            if len(self.screens):
+                self.current = list(self.screens.values())[0]
+            else:
+                self.current = None
+
+    def flip(self):
+        if self.current:
+            self.screens[self.current].flip()
+            self.main_surface.blit(self.screens[self.current].surface, (0, 0))
+
+    def get_click(self, pos):
+        return self.screens[self.current].get_click(pos)
+
+    def mouse_flip(self, pos):
+        return self.screens[self.current].mouse_flip(pos)
+
+    def check_pressed(self, pressed):
+        return self.screens[self.current].check_pressed(pressed)
+
+    def mouse_up(self):
+        return self.screens[self.current].mouse_up()
+
+    def tick(self, delta):
+        return self.screens[self.current].tick(delta)
+
+    def k_down(self, event):
+        return self.screens[self.current].k_down(event)
+
+
+class Screen:
+
+    def __init__(self, size):
+        self.elements = []
+        self.surface = pygame.Surface(size)
+
+    def change_size(self, size):
+        self.surface = pygame.Surface(size)
+        for i in self.elements:
+            i[0].screen = self.surface
+        return self
+
+    def add_object(self, pos, element):
+        self.elements.append((element, pos))
+        try:
+            element.screen = self.surface
+            element.set_world_position(pos)
+        except AttributeError as e:
+            pass
+        return self
+
+    def remove_object(self, element):
+        for i in range(len(self.elements)):
+            if self.elements[i][0] == element:
+                self.elements.pop(i)
+        return self
+
+    def get_click(self, vector2):
+        for i in self.elements[::-1]:
+            if not isinstance(i[0], (pygame.sprite.Sprite, pygame.Rect, pygame.Surface)) and\
+                    i[0].screen.get_rect().collidepoint(vector2):
+                return i[0].get_click(vector2)
+
+    def mouse_flip(self, vector2):
+        for i in self.elements[::-1]:
+            if not isinstance(i[0], (pygame.sprite.Sprite, pygame.Rect, pygame.Surface)) and \
+                    i[0].screen.get_rect().collidepoint(vector2):
+                return i[0].mouse_flip(vector2)
+
+    def check_pressed(self, pressed):
+        for i in self.elements[::-1]:
+            if not isinstance(i[0], (pygame.sprite.Sprite, pygame.Rect, pygame.Surface)):
+                return i[0].check_pressed(pressed)
+
+    def mouse_up(self):
+        for i in self.elements[::-1]:
+            if not isinstance(i[0], (pygame.sprite.Sprite, pygame.Rect, pygame.Surface)):
+                return i[0].mouse_up()
+
+    def k_down(self, event):
+        for i in self.elements[::-1]:
+            if not isinstance(i[0], (pygame.sprite.Sprite, pygame.Rect, pygame.Surface)):
+                return i[0].k_down(event)
+
+    def flip(self):
+        for i in self.elements:
+            if isinstance(i[0], (pygame.sprite.Sprite, pygame.Rect, pygame.Surface)):
+                self.surface.blit(*i)
+            else:
+                i[0].flip()
+
+    def tick(self, delta):
+        for i in self.elements:
+            i[0].tick(delta)

@@ -45,17 +45,18 @@ def old_click_in(func):
     return new
 
 
-def click_in(func, as_atr=False):
+def click_in(as_atr=False):
+    def dec(func):
+        def new(self, pos):
+            if self.rect.collidepoint(pos):
+                return func(self, pos, *([True] if as_atr else []))
+            elif as_atr:
+                return func(self, pos, False)
+            else:
+                return None
 
-    def new(self, pos):
-        if self.rect.collidepoint(pos):
-            return func(self, pos, *([True] if as_atr else []))
-        elif as_atr:
-            return func(self, pos, False)
-        else:
-            return None
-
-    return new
+        return new
+    return dec
 
 
 def check_transparent(func):
