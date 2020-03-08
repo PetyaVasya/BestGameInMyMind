@@ -31,6 +31,12 @@ class UIObject:
     def set_size(self, width, height):
         self.rect = pygame.Rect(0, 0, width, height)
 
+    def set_width(self, width):
+        self.rect.width = width
+
+    def set_height(self, height):
+        self.rect.height = height
+
     def get_click(self, pos: pygame.Vector2):
         pass
 
@@ -957,3 +963,37 @@ class Image(UIObject, Drawable):
     def flip(self):
         self.draw_rect(self.border_color, self.rect)
         self.screen.blit(self.img, self.rect.move(self.border, self.border))
+
+
+class InputField(UIObject, Drawable):
+
+    def __init__(self, screen, pos=pygame.Vector2, width=100, height=50, border=5):
+        super().__init__(pos, width, height)
+        self.screen = screen
+        self._border = border
+        self.text_surf = pygame.Surface((width - border * 2 - 10, height - border * 2 - 10))
+        self.text = ""
+
+    @property
+    def border(self):
+        return self._border
+
+    @border.setter
+    def border(self, value):
+        self._border = value
+        self.text_surf = pygame.Surface((self.rect.w - value * 2 - 10, self.rect.h - value * 2 - 10))
+
+    def set_size(self, width, height):
+        super().set_size(width, height)
+        self.text_surf = pygame.Surface(
+            (self.rect.w - self.border * 2 - 10, self.rect.h - self.border * 2 - 10))
+
+    def flip(self):
+        self.draw_rect(BASE_COLOR // 2, self.rect)
+        self.draw_rect(pygame.Color("White"), self.text_surf)
+        
+
+
+class Frame(UIObject):
+    pass
+
