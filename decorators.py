@@ -1,5 +1,7 @@
+from functools import wraps, partial
+
 import pygame
-from constants import TRANSPARENT
+from constants import TRANSPARENT, STILL_RUNNING
 
 
 def zero_args(func):
@@ -45,18 +47,20 @@ def old_click_in(func):
     return new
 
 
-def click_in(as_atr=False):
-    def dec(func):
-        def new(self, pos):
-            if self.rect.collidepoint(pos):
-                return func(self, pos, *([True] if as_atr else []))
-            elif as_atr:
-                return func(self, pos, False)
+def _click_in(func, as_atr=False):
+    def new(self, pos):
+        if self.rect.collidepoint(pos):
+            if as_atr:
+                return func(self, pos, True)
             else:
-                return None
+                return func(self, pos)
+        elif as_atr:
+            func(self, pos, False)
+            return None
+        else:
+            return None
 
-        return new
-    return dec
+    return new
 
 
 def check_transparent(func):
@@ -78,3 +82,25 @@ def on_alive(func):
         return None
 
     return new
+
+
+def check_visible(func):
+
+    def new(self, *args, **kwargs):
+        if self.visible:
+            return func(self, *args, **kwargs)
+    return new
+
+
+def async_lock(func):
+
+    async def new(self, *args, **kwargs):
+        if getattr(self, func.__name__ + "_lock").locked():
+            return STILL_RUNNING
+        async with getattr(self, func.__name__ + "_lock"):
+            return await func(self, *args, **kwargs)
+    return new
+
+
+click_in = partial(_click_in, as_atr=False)
+click_in_as_arg = partial(_click_in, as_atr=True)

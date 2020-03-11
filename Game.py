@@ -4,10 +4,12 @@ from typing import Optional
 import pygame
 from shapely.geometry import LineString, Point
 from shapely.geometry.polygon import Polygon
+
+from Client import Client
 from Environment import Castle, Canteen, Storage, Project, Source, create_hexagon, UnitSpawn, Path
 from constants import *
 from Settings import SessionAttributes
-from UI import Tip, GameMenu, Statusbar, Button
+from UI import Tip, GameMenu, Statusbar, Button, Screen, ScreensSystem
 from math import sin, cos, radians
 from Tools import *
 import ptext
@@ -58,39 +60,40 @@ class Game(metaclass=SingletonMeta):
         self.session = None
         self.center = pygame.Vector2(0, 0)
         self.tips = {k: Tip(v["title"], v["text"]) for k, v in tips.items()}
-        self.screen = ScreensSystem(None)
-
-    def set_surface(self, screen):
-        self.surface = screen
-        self.screen.main_surface = screen
-
-    def init_pygame_variables(self):
-        self.center = pygame.Vector2(
-            self.surface.get_width() / 2 // STANDARD_WIDTH * STANDARD_WIDTH,
-            self.surface.get_height() / 2 // STANDARD_HEIGHT * STANDARD_HEIGHT)
-        self.hexagons = {GRASS: pygame.transform.scale(pygame.image.load(SPRITES_PATHS[GRASS]),
-                                                       (STANDARD_WIDTH, STANDARD_WIDTH)),
-                         WATER: pygame.transform.scale(pygame.image.load(SPRITES_PATHS[WATER]),
-                                                       (STANDARD_WIDTH, STANDARD_WIDTH)),
-                         }
-
-        def solo():
-            self.screen.current = "main"
-
-        def fight():
-            self.screen.current = "online"
-
-        n_size = self.surface.get_size()
-        size = pygame.Vector2(n_size)
-        self.screen.add_screen("main", Screen(n_size) \
-                               .add_object(pygame.Vector2(0, 0),
-                                           pygame.transform.scale(load_image("images/earth/grass.png"), n_size)) \
-                               .add_object(pygame.Vector2(size.x * 0.6, size.y * 0.3),
-                                           Button(None).set_background(
-                                               ptext.getsurf("Одиночная игра")).set_action(solo)) \
-                               .add_object(pygame.Vector2(size.x * 0.6, size.y * 0.4),
-                                           Button(None).set_background(
-                                               ptext.getsurf("Сетевая игра")).set_action(fight)))
+    #     self.screen = ScreensSystem(None)
+        self.client = Client()
+    #
+    # def set_surface(self, screen):
+    #     self.surface = screen
+    #     self.screen.main_surface = screen
+    #
+    # def init_pygame_variables(self):
+    #     self.center = pygame.Vector2(
+    #         self.surface.get_width() / 2 // STANDARD_WIDTH * STANDARD_WIDTH,
+    #         self.surface.get_height() / 2 // STANDARD_HEIGHT * STANDARD_HEIGHT)
+    #     self.hexagons = {GRASS: pygame.transform.scale(pygame.image.load(SPRITES_PATHS[GRASS]),
+    #                                                    (STANDARD_WIDTH, STANDARD_WIDTH)),
+    #                      WATER: pygame.transform.scale(pygame.image.load(SPRITES_PATHS[WATER]),
+    #                                                    (STANDARD_WIDTH, STANDARD_WIDTH)),
+    #                      }
+    #
+    #     def solo():
+    #         self.screen.current = "main"
+    #
+    #     def fight():
+    #         self.screen.current = "online"
+    #
+    #     n_size = self.surface.get_size()
+    #     size = pygame.Vector2(n_size)
+    #     self.screen.add_screen("main", Screen(n_size) \
+    #                            .add_object(pygame.Vector2(0, 0),
+    #                                        pygame.transform.scale(load_image("images/earth/grass.png"), n_size)) \
+    #                            .add_object(pygame.Vector2(size.x * 0.6, size.y * 0.3),
+    #                                        Button(None).set_background(
+    #                                            ptext.getsurf("Одиночная игра")).set_action(solo)) \
+    #                            .add_object(pygame.Vector2(size.x * 0.6, size.y * 0.4),
+    #                                        Button(None).set_background(
+    #                                            ptext.getsurf("Сетевая игра")).set_action(fight)))
 
     def flip(self):
         self.screen.flip()
@@ -115,13 +118,13 @@ class Game(metaclass=SingletonMeta):
         self.screen.get_click(mouse_pos)
 
     def create_fight(self, map):
-        self.session = Session(self.surface)
+        self.session = GameSession(self.surface)
         self.session.generate_map(map)
         self.screen.add_screen("online", Screen(self.surface.get_size()).add_object((0, 0),
                                                                                     self.session))
 
 
-class Session:
+class GameSession:
 
     def __init__(self, screen):
         self.field = None
