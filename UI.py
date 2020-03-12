@@ -30,8 +30,7 @@ class UIObject:
     @update_pos
     def set_world_position(self, pos):
         self.world_position = pos
-        self.rect.x = pos.x
-        self.rect.y = pos.y
+        self.rect.x, self.rect.y = pos
         return self
 
     def upgrade_coords(self, *args):
@@ -1195,6 +1194,9 @@ class Text(UIObject, Drawable):
         self._underline = underline
         self._text_color = text_color
 
+    def set_world_position(self, pos):
+        super().set_world_position(pos)
+
     @property
     def text(self):
         return self._text
@@ -1411,7 +1413,6 @@ class Form(UIObject, Drawable):
             self.name_field[name] = field
 
     def add_btn(self, btn):
-        print("l1", btn.width, self.btns.data_rect.w)
         if btn.width > self.btns.data_rect.w:
             if self.btns_pos == LEFT:
                 self.elements_rect.w = self.inner_rect.w - btn.width - self.btns.border * 2 - 20
@@ -1432,7 +1433,7 @@ class Form(UIObject, Drawable):
 
     @update_pos
     def set_world_position(self, pos):
-        print("l2")
+        print("seted")
         super().set_world_position(pos)
         if self.btns_pos == TOP:
             self.btns.set_world_position(pos + [self.border] * 2)
@@ -1448,13 +1449,13 @@ class Form(UIObject, Drawable):
         # elif self.btns_pos == RIGHT:
         #     self.btns.set_world_position(pos + [self.border + self.elements_rect.w, self.border])
         #     self.elements_rect.x, self.elements_rect.y = pos + [self.border, self.border]
-        else:
+        elif self.btns_pos == BOTTOM:
             self.btns.set_world_position(
-                pos + [self.border, self.border + self.elements_rect.h - 50 * self.n_error])
+                pos + [self.border, self.border + self.elements_rect.h + 50 * self.n_error])
             self.elements_rect.x, self.elements_rect.y = pos + [self.border] * 2
             if self.n_error:
                 self.error.set_world_position(
-                    pos + [self.border, self.border + self.elements_rect.w - 50])
+                    pos + [self.border, self.border + self.elements_rect.h])
         self.fields.set_world_position(self.elements_rect.x, self.elements_rect.y)
         self.inner_rect.x, self.inner_rect.y = pos + [self.border] * 2
 
@@ -1482,25 +1483,25 @@ class Form(UIObject, Drawable):
 
     @size.setter
     def size(self, value):
-        print("l3")
+        print("size changed")
         UIObject.size.fset(self, value)
         self.inner_rect.w = value[0] - self.border * 2
         self.inner_rect.h = value[1] - self.border * 2
         self.set_world_position(self.world_position)
         if self.btns_pos == TOP:
             self.btns.size = self.inner_rect.w, self.inner_rect.h * 0.1
-            self.elements_rect.size = self.inner_rect.w, self.inner_rect.h * 0.9
+            self.elements_rect.size = self.inner_rect.w, self.inner_rect.h * 0.9 - 50 * self.n_error
         elif self.btns_pos == LEFT:
             self.btns.size = self.inner_rect.w * 0.2, self.inner_rect.h
-            self.elements_rect.size = self.inner_rect.w * 0.8, self.inner_rect.h
+            self.elements_rect.size = self.inner_rect.w * 0.8, self.inner_rect.h - 50 * self.n_error
 
         elif self.btns_pos == RIGHT:
             self.btns.size = self.inner_rect.w * 0.2, self.inner_rect.h
             self.elements_rect = pygame.Rect(*(self.pos + [self.border, self.border]),
-                                             self.inner_rect.w * 0.8, self.inner_rect.h)
+                                             self.inner_rect.w * 0.8, self.inner_rect.h - 50 * self.n_error)
         elif self.btns_pos == BOTTOM:
             self.btns.size = self.inner_rect.w, self.inner_rect.h * 0.1
-            self.elements_rect.size = self.inner_rect.w, self.inner_rect.h * 0.9
+            self.elements_rect.size = self.inner_rect.w, self.inner_rect.h * 0.9 - 50 * self.n_error
         self.fields.size = self.elements_rect.size
 
     @property

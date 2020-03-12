@@ -130,7 +130,6 @@ class Client:
     @login_required
     @async_lock
     async def get_friends(self):
-        print(self.user.make_headers())
         try:
             r = await self.get("/friends", headers=self.user.make_headers())
         except aiohttp.ClientConnectionError:
@@ -153,6 +152,7 @@ class Client:
         try:
             r = await self.post("/log_in", headers={"name": name, "pass": password})
         except aiohttp.ClientConnectionError:
+            print("ASDASDADASDASD")
             return SERVER_DONT_WORK
         if r.status_code == 200:
             u = json.loads(r.text)
