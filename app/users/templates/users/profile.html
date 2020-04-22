@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% set is_current = (current_user.name == user.name) %}
+
+{% block content %}
+<h1>Профиль</h1>
+<div class="container">
+    <div class="row">
+        <div class="col">
+            <h2>{{ user.name }}</h2>
+            {% if not is_current %}
+            <div class="row">
+                <button class="btn m-auto friend-btn
+                 {% if user in current_user.friends or user in current_user.follows%}
+                 remove-friend
+                 {% else %}add-friend {% endif %}">
+                    {% if user in current_user.friends %}Удалить из друзей
+                    {% elif user in current_user.follows %}Отписаться{% else %} Добавить в друзья {%
+                    endif %}
+                </button>
+            </div>
+            {% endif %}
+            <div class="row">
+                <div class="col-6 d-flex m-auto justify-content-around align-items-center">
+                {% if discord_user %}
+                    <div class="row d-flex align-items-center">
+                        <img src="{{url_for('static', filename='img/discord.png')}}" style="width: auto; height: 30px;">
+                    <a href="https://discordapp.com/users/{{discord_user['id']}}">{{discord_user["username"]}}#{{discord_user["discriminator"]}}</a>
+                        </div>
+                    {% if is_current and 0 %}
+                    <button class="btn bg-danger disconnect-discord">X</button>
+                    {% endif %}
+                {% elif is_current %}
+                    <button class="btn connect-discord">Подключить дискорд</button>
+                {% endif %}
+                    </div>
+            </div>
+        </div>
+        <div class="col">
+            <table class="table">
+                <thead class="thead-dark table-bordered">
+                <tr>
+                    <th scope="col">Общее кол-во матчей</th>
+                    <th scope="col">Кол-во побед</th>
+                    <th scope="col">Кол-во поражений</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr>
+                    <td>{{user.sessions_c}} {% if not is_current %}
+                        {% if user.sessions_c == current_user.sessions_c %}
+                        =
+                        {% elif user.sessions_c > current_user.sessions_c %}
+                        ▲
+                        {% else %}
+                        ▼
+                        {%endif%}
+                        {%endif%}
+                    </td>
+                    <td>{{user.win_sessions_c}} {% if not is_current %}
+                        {% if user.win_sessions_c == current_user.win_sessions_c %}
+                        =
+                        {% elif user.win_sessions_c > current_user.win_sessions_c %}
+                        ▲
+                        {% else %}
+                        ▼
+                        {%endif%}
+                        {%endif%}
+                    </td>
+                    <td>{{user.loose_sessions_c}} {% if not is_current %}
+                        {% if user.loose_sessions_c == current_user.loose_sessions_c %}
+                        =
+                        {% elif user.loose_sessions_c > current_user.loose_sessions_c %}
+                        ▲
+                        {% else %}
+                        ▼
+                        {%endif%}
+                        {%endif%}
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col">
+            <table class="table">
+                <thead class="thead-dark table-bordered">
+                <tr>
+                    <th scope="col">Номер матча</th>
+                    <th scope="col">Победитель</th>
+                    <th scope="col">Участники</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for session in sessions.items %}
+                <tr>
+                    <td scope="row">{{ loop.index + 1 }}</td>
+                    <td>
+                        <a href="{% if session.winner == current_user %}#{% else %}/profile/{{session.winner.name}}{% endif %}">{{session.winner.name}}</a>
+                    </td>
+                    <td>
+                        <ul>
+                            {% for suser in session.users %}
+                            <li>
+                                <a href="{% if suser == current_user %}
+                                 #
+                                 {% else %}/profile/{{suser.name}}{% endif %}">{{suser.name}}</a>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            <nav aria-label="User sessions navigation">
+                <ul class="pagination justify-content-center">
+                    <li class="page-item {%if not sessions.has_prev %}disabled{% endif %}">
+                        <a class="page-link" href="./?page={{sessions.prev_num}}" tabindex="-1"
+                           aria-disabled="true">Предыдущая</a>
+                    </li>
+                    {% for page in sessions.iter_pages() %}
+                    <li class="page-item"><a
+                            class="page-link {% if page == sessions.page %} active {% endif %}"
+                            href="./?page={{page}}">{{page}}</a></li>
+                    {% endfor %}
+                    <li class="page-item {%if not sessions.has_next %}disabled{% endif %}">
+                        <a class="page-link"
+                           href="./?page={{sessions.next_num}}">Следующая</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    {% if not is_current %}
+    $(".friend-btn").click(function () {
+        let element = $(this);
+        if (element.hasClass("add-friend")) {
+            element.html(`<img src='{{ url_for('static', filename='img/loading.gif') }}' style='width: auto; height: ${element.height()}px'>`);
+            element.toggleClass("add-friend");
+            $.post('/friends/add', {
+                name: "{{ user.name }}"
+            }).done(function (response) {
+                element.text(response["friends"] ? "Удалить из друзей" : "Отписаться");
+                element.toggleClass("remove-friend");
+            }).fail(function () {
+                element.text("Добавить в друзья");
+                element.toggleClass("add-friend");
+            });
+        } else if(element.hasClass("remove-friend")) {
+            element.html(`<img src='{{ url_for('static', filename='img/loading.gif') }}' style='width: auto; height: ${element.height()}px'>`);
+            element.toggleClass("remove-friend");
+            $.post('/friends/remove', {
+                name: "{{ user.name }}"
+            }).done(function (response) {
+                element.text("Добавить в друзья");
+                element.toggleClass("add-friend");
+            }).fail(function (response) {
+                element.toggleClass("remove-friend");
+                element.text("{% if user in current_user.friends %}Удалить из друзей{% else %}Отписаться{% endif %}");
+            });
+        }
+    });
+    {% else %}
+    $(".connect-discord").click(function () {
+        $(location).attr("href", "/discord/login");
+    });
+    $(".disconnect-discord").click(function () {
+        $(location).attr("href", "/discord/revoke");
+    });
+    {% endif %}
+</script>
+{% endblock %}

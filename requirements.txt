@@ -1,0 +1,7 @@
+itsdangerous
+requests_oauthlib
+flask
+flask-migrate
+python-dotenv
+
+pip-tools

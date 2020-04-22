@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% set is_current = current_user == user %}
+<div class="container pt-5">
+    <div class="row">
+        <div class="col m-auto ">
+            <h1 class="m-auto">Рейтинг</h1>
+            {% if current_user.is_active %}
+            <div class="row pb-2">
+                <div class="btn-group m-auto" role="group" aria-label="Basic example">
+                    <button id="all-users" class="btn btn-secondary{% if request.args.get('friends') != 'True' %} active{% endif %}">Все</button>
+                    <button id="only-friends" class="btn btn-secondary{% if request.args.get('friends') == 'True' %} active{% endif %}">Друзья</button>
+                </div>
+            </div>
+            {% endif %}
+            <table class="table">
+                <thead class="thead-dark table-bordered">
+                <tr>
+                    <th scope="col">Место</th>
+                    <th scope="col">Имя</th>
+                    <th scope="col">Кол-во побед</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for user in users.items %}
+                <tr>
+                    <td scope="row">{{loop.index + 100 * (users.page - 1)}}</td>
+                    <td><a href="{% if suser == current_user %}
+                                 #
+                                 {% else %}/profile/{{user.name}}{% endif %}">{{user.name}}</a>
+                    </td>
+                    <td>
+                        {{user.win_sessions_c}}
+                    </td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+            <nav aria-label="Page navigation example">
+                <ul class="pagination justify-content-center">
+                    <li class="page-item {%if not users.has_prev %}disabled{% endif %}">
+                        <a class="page-link" href="./?page={{users.prev_num}}" tabindex="-1"
+                           aria-disabled="true">Предыдущая</a>
+                    </li>
+                    {% for page in users.iter_pages() %}
+                    <li class="page-item"><a
+                            class="page-link {% if page == users.page %} active {% endif %}"
+                            href="./?page={{page}}">{{page}}</a></li>
+                    {% endfor %}
+                    <li class="page-item {%if not users.has_next %}disabled{% endif %}">
+                        <a class="page-link"
+                           href="./?page={{users.next_num}}">Следующая</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+    <script>
+        $("#all-users").click(function () {
+            if (!$(this).hasClass("active")){
+                $(location).attr("href", "./?page={{request.args.get('page', 1) }}");
+            }
+        });
+        $("#only-friends").click(function () {
+            if (!$(this).hasClass("active")){
+                $(location).attr("href", "./?page={{request.args.get('page', 1) }}&friends=True");
+            }
+        });
+    </script>
+{% endblock %}
