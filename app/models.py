@@ -11,11 +11,12 @@ from flask_login import UserMixin
 from sqlalchemy_utils import EmailType, PasswordType
 
 from .constants import OFFLINE, PENDING
+import transliterate
 
 
 def slugify(s):
     pattern = r"[^\w+]"
-    return re.sub(pattern, "-", s)
+    return transliterate.translit(re.sub(pattern, "-", s), reversed=True).replace("'", "")
 
 
 relationship = db.Table('relationship',
@@ -185,7 +186,7 @@ class Session(db.Model):
     __repr_attrs = ["user", "name", "status"]
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    user_limit = db.Column(db.Integer, default=4)
+    user_limit = db.Column(db.Integer, default=2)
     name = db.Column(db.String(50), nullable=False)
     desc = db.Column(db.String(300), nullable=True)
     host_id = db.Column(db.Integer, nullable=True)
@@ -249,9 +250,9 @@ class Post(db.Model):
     description = db.Column(db.String, nullable=True)
     discord_id = db.Column(db.String, nullable=True)
     author_id = db.Column(db.Integer, db.ForeignKey('user.id'))
-    img = db.Column(db.String, nullable=True)
-    date = db.Column(db.DateTime, default=datetime.datetime.now())
-    last_edit = db.Column(db.DateTime, onupdate=datetime.datetime.now())
+    img_id = db.Column(db.Integer, db.ForeignKey("file.id"), nullable=True)
+    date = db.Column(db.DateTime, default=datetime.datetime.now)
+    last_edit = db.Column(db.DateTime, onupdate=datetime.datetime.now)
     tags = db.relationship("Tag",
                            secondary=post_tags,
                            backref=db.backref("posts", lazy="dynamic"),
@@ -263,8 +264,9 @@ class Post(db.Model):
         self.generate_slug()
 
     def generate_slug(self):
-        if self.title:
-            self.slug = slugify(self.title)
+        slug = slugify(self.title)
+        c = max(0, Post.query.filter(Post.slug == slug).count() - 1)
+        self.slug = slug + ("-{}".format(c + 1) if c else "")
 
     def __repr__(self):
         return "<Post {} title: '{}'>".format(self.id, self.title)
@@ -277,7 +279,25 @@ class Tag(db.Model):
 
     def __init__(self, *args, **kwargs):
         super(Tag, self).__init__(*args, **kwargs)
-        self.slug = slugify(self.name)
+        self.generate_slug()
+
+    def generate_slug(self):
+        slug = slugify(self.name)
+        c = max(0, Tag.query.filter(Tag.slug == slug).count() - 1)
+        self.slug = slug + ("-{}".format(c + 1) if c else "")
 
     def __repr__(self):
         return "<Tag {} name: '{}'>".format(self.id, self.name)
+
+
+class File(db.Model):
+    __tablename__ = "file"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String)
+    path = db.Column(db.String)
+    type = db.Column(db.String)
+    date = db.Column(db.Date, default=datetime.datetime.now)
+    posts = db.relationship("Post", backref="img")
+
+    def __repr__(self):
+        return "<File {} >".format(self.name)

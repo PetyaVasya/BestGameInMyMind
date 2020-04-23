@@ -10,6 +10,7 @@ class Config(object):
     OAUTH2_CLIENT_SECRET = os.environ.get('OAUTH2_CLIENT_SECRET',
                                           "72_eMJRHIvjFttxCdRC2hPXSY_spKGTY")
     OAUTH2_REDIRECT_URI = 'http://127.0.0.1:5000/discord/callback'
+    UPLOAD_FOLDER = "static/img/upload"
 
     API_BASE_URL = os.environ.get('API_BASE_URL', 'https://discordapp.com/api')
     AUTHORIZATION_BASE_URL = API_BASE_URL + '/oauth2/authorize'

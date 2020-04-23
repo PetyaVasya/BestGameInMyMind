@@ -4,10 +4,11 @@ from functools import wraps
 
 import requests
 from flask import Blueprint, redirect, render_template, url_for, flash, jsonify, request, session
+from flask_breadcrumbs import register_breadcrumb, default_breadcrumb_root
 from flask_login import current_user, login_user, login_required, logout_user, LoginManager
 from requests_oauthlib import OAuth2Session
 
-from app.Forms import LoginForm, RegistrationForm
+from .forms import LoginForm, RegistrationForm
 from app.app import db, app
 from app.email import send_email
 from app.models import User
@@ -17,7 +18,7 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 
 users = Blueprint("users", __name__, template_folder="templates")
-
+default_breadcrumb_root(users, '.')
 
 def check_confirmed(func):
     @wraps(func)
@@ -40,7 +41,13 @@ def catch():
     return redirect("/")
 
 
+@users.errorhandler(404)
+def error404(e):
+    return render_template("users/404.html")
+
+
 @users.route('/login', methods=['GET', 'POST'])
+@register_breadcrumb(users, '.login', 'Авторизация')
 def login():
     form = LoginForm()
     if form.validate_on_submit():
@@ -51,13 +58,17 @@ def login():
 
 
 @users.route('/registration', methods=['GET', 'POST'])
+@register_breadcrumb(users, '.registration', 'Регистрация')
 def registration():
     form = RegistrationForm()
     if form.validate_on_submit():
-        user = User(name=form.name.data, email=form.email.data, password=form.password.data,
-                    confirmed=False)
-        db.session.add(user)
-        db.session.commit()
+        try:
+            user = User(name=form.name.data, email=form.email.data, password=form.password.data,
+                        confirmed=False)
+            db.session.add(user)
+            db.session.commit()
+        except Exception as e:
+            print(e)
         token = generate_confirmation_token(user.email)
         confirm_url = url_for('users.confirm_email', token=token, _external=True)
         html = render_template('users/activate.html', confirm_url=confirm_url)
@@ -70,6 +81,7 @@ def registration():
 
 
 @users.route('/confirm/<token>')
+@register_breadcrumb(users, '.confirmation', 'Подтверждение почты')
 def confirm_email(token):
     try:
         email = confirm_token(token)
@@ -88,8 +100,8 @@ def confirm_email(token):
 
 @users.route('/unconfirmed')
 @login_required
+@register_breadcrumb(users, '.unconfirmed', 'Профиль')
 def unconfirmed():
-    print(123123)
     if current_user.confirmed:
         return redirect("/")
     flash('Пожалуйста, подтвердите аккаунт!', 'warning')
@@ -98,6 +110,7 @@ def unconfirmed():
 
 @users.route('/resend')
 @login_required
+@register_breadcrumb(users, '.resend', 'Профиль')
 def resend_confirmation():
     token = generate_confirmation_token(current_user.email)
     confirm_url = url_for('users.confirm_email', token=token, _external=True)
@@ -115,10 +128,21 @@ def logout():
     return redirect("/")
 
 
+def profile_breadcrumbs(*args, **kwargs):
+    name = request.view_args.get('name')
+    if not name:
+        return [{'text': 'Профиль', 'url': url_for("users.profile")}]
+    user = User.query.filter(User.name == name).first()
+    if not user:
+        return [{'text': 'Профиль', 'url': url_for("users.profile")}, {'text': "Ошибка", 'url': ""}]
+    return [{'text': 'Профиль', 'url': url_for("users.profile")}, {'text': user.name, 'url': url_for("users.profile", name=user.name)}]
+
+
 @users.route("/profile")
 @users.route("/profile/<name>")
 @login_required
 @check_confirmed
+@register_breadcrumb(users, '.profile', '', dynamic_list_constructor=profile_breadcrumbs)
 def profile(name=""):
     page = request.args.get("page")
     if page and page.isdigit():

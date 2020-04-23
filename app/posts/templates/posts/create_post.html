@@ -1,0 +1,21 @@
+{% set title = "Создание записи" %}
+{% extends "base.html" %}
+
+{% block content %}
+    <form method="post" action="{{url_for('posts.create_post')}}" enctype="multipart/form-data">
+        {% for field in form %}
+            {% if loop.last %}
+            <div class="form-group">
+                {{ field.label(class="control-label d-none") }}
+                {{ field(class="form-control")}}
+            </div>
+            {% else %}
+            <div class="form-group">
+                {{ field.label(class="control-label") }}
+                {{ field(class="form-control")}}
+            </div>
+            {% endif %}
+        {% endfor %}
+        <button type="submit" class="btn btn-success">Создать</button>
+    </form>
+{% endblock %}

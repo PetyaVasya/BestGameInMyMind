@@ -6,11 +6,11 @@
     <h2>{{post.title}}</h2>
         <div class="bd-example">
             {% for tag in tags %}
-                <a href="{{url_for('posts.tag_detail', slug=tag.slug)}}" class="badge badge-light">tag.name</a>
+                <a href="{{url_for('posts.tag_detail', slug=tag.slug)}}" class="badge badge-info">{{tag.name}}</a>
             {% endfor %}
         </div>
         {% if post.img %}
-            <img src="{{post.img}}">
+            <img class="img-fluid" src="{{post.img.path}}">
         {% endif %}
     <p>{{post.description}}</p>
 {% endblock %}
