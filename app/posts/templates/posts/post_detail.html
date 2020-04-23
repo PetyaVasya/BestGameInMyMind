@@ -1,0 +1,16 @@
+{% set title = post.title %}
+
+{% extends "base.html" %}
+
+{% block content %}
+    <h2>{{post.title}}</h2>
+        <div class="bd-example">
+            {% for tag in tags %}
+                <a href="{{url_for('posts.tag_detail', slug=tag.slug)}}" class="badge badge-light">tag.name</a>
+            {% endfor %}
+        </div>
+        {% if post.img %}
+            <img src="{{post.img}}">
+        {% endif %}
+    <p>{{post.description}}</p>
+{% endblock %}

@@ -1,0 +1,78 @@
+{% set title = "Блог" %}
+
+{% extends "base.html" %}
+
+{% block content %}
+{% set search_player = request.args.get("players") == "True" %}
+<div class="row pb-2">
+    <div class="btn-group m-auto" role="group" aria-label="Basic example">
+        <button id="posts" class="btn btn-secondary{% if not search_player %} active{% endif %}">Записи</button>
+        <button id="users" class="btn btn-secondary{% if search_player %} active{% endif %}">Игроки</button>
+    </div>
+</div>
+<h2>Найденные {% if search_player %}игроки{% else %}записи{% endif %}:</h2>
+{% if not search_player %}
+{% for post in res.items %}
+<div class="card mb-3">
+  <img class="card-img-top" src="..." alt="Card image cap">
+  <div class="card-body">
+    <h5 class="card-title">{{post.title}}</h5>
+    <p class="card-text">{{post.text|truncate}}</p>
+       <a href="{{url_for('posts.post_detail', slug=post.slug)}}" class="btn btn-primary">Перейти</a>
+
+    <div class="row">
+        <p class="card-text"><small class="text-muted">{{post.date.strftime("%Y %m %d %H:%M")}}</small></p>
+        <div class="bd-example">
+            {% for tag in post.tags[:5] %}
+                <a href="{{url_for('posts.tag_detail', slug=tag.slug)}}" class="badge badge-light">tag.name</a>
+            {% endfor %}
+        </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% else %}
+
+<ul class="m-auto col-6">
+    {% for user in res.items %}
+        <li><a href="{% if user == current_user %}#{% else %}/profile/{{user.name}}{% endif %}">{{user.name}}</a></li>
+    {% endfor %}
+</ul>
+{% endif %}
+{% if res.total %}
+<nav aria-label="Page navigation example">
+    <ul class="pagination justify-content-center">
+        <li class="page-item {%if not res.has_prev %}disabled{% endif %}">
+            <a class="page-link" href="./?page={{res.prev_num}}" tabindex="-1"
+               aria-disabled="true">Предыдущая</a>
+        </li>
+        {% for page in res.iter_pages() %}
+        <li class="page-item"><a
+                class="page-link {% if page == res.page %} active {% endif %}"
+                href="./?page={{page}}">{{page}}</a></li>
+        {% endfor %}
+        <li class="page-item {%if not res.has_next %}disabled{% endif %}">
+            <a class="page-link"
+               href="./?page={{res.next_num}}">Следующая</a>
+        </li>
+    </ul>
+</nav>
+{% else %}
+<h2>Извините, но мы ничего не нашли</h2>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    $("#posts").click(function () {
+            if (!$(this).hasClass("active")){
+                $(location).attr("href", "./?page={{request.args.get('page', 1)}}&q={{request.args.get('q', '')}}");
+            }
+        });
+    $("#users").click(function () {
+        if (!$(this).hasClass("active")){
+            $(location).attr("href", "./?page={{request.args.get('page', 1)}}&players=True&q={{request.args.get('q', '')}}");
+        }
+    });
+</script>
+{% endblock %}

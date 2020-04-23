@@ -2,6 +2,7 @@ import datetime
 
 from sqlalchemy import func, select, alias, exists, table
 from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
+import re
 from sqlalchemy.orm import aliased
 
 from .app import db
@@ -11,12 +12,11 @@ from sqlalchemy_utils import EmailType, PasswordType
 
 from .constants import OFFLINE, PENDING
 
-# class Relationship(db.Model):
-#     __tablename__ = "relationship"
-#     __repr_attrs__ = ["status"]
-#
-#     requesting_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
-#     receiving_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
+
+def slugify(s):
+    pattern = r"[^\w+]"
+    return re.sub(pattern, "-", s)
+
 
 relationship = db.Table('relationship',
                         db.Column('requesting_user_id', db.Integer, db.ForeignKey('user.id')),
@@ -34,6 +34,7 @@ class User(db.Model, UserMixin):
     admin = db.Column(db.Boolean, default=False, nullable=False)
     confirmed = db.Column(db.Boolean, nullable=False, default=False)
     confirmed_on = db.Column(db.DateTime, nullable=True)
+    notifications = db.Column(db.Boolean, default=True)
     password = db.Column(PasswordType(
         schemes=[
             'pbkdf2_sha512',
@@ -42,7 +43,7 @@ class User(db.Model, UserMixin):
 
         deprecated=['md5_crypt']
     ))
-    sessions = db.relationship("Session", secondary="usersession",
+    sessions = db.relationship("Session", secondary="user_session",
                                order_by="desc(UserSession.date)", lazy='dynamic')
     f_follows = db.relationship('User', secondary=relationship,
                                 primaryjoin=(relationship.c.requesting_user_id == id),
@@ -51,6 +52,7 @@ class User(db.Model, UserMixin):
                                 lazy='dynamic')
     status = 0
     token_info = db.Column(db.String, nullable=True)
+    posts = db.relationship("Post", order_by="desc(Post.date)", backref="author")
     # f_followers = db.relationship(
     #     'Relationship',
     #     foreign_keys='Relationship.receiving_user_id',
@@ -110,7 +112,8 @@ class User(db.Model, UserMixin):
                                                                  left.c.requesting_user_id == right.c.receiving_user_id) & (
                                                                  right.c.requesting_user_id == left.c.receiving_user_id))).group_by(
             relationship.c.requesting_user_id, relationship.c.receiving_user_id)
-        b = select([User]).select_from(a).where((relationship.c.requesting_user_id == cls.id)).group_by(User.id)
+        b = select([User]).select_from(a).where(
+            (relationship.c.requesting_user_id == cls.id)).group_by(User.id)
         return b
 
     @hybrid_property
@@ -151,8 +154,8 @@ class User(db.Model, UserMixin):
         # print(select([User]).join(a, ))
         a = select([relationship]).select_from(left.join(right,
                                                          (
-                                                                     left.c.requesting_user_id == right.c.receiving_user_id) & (
-                                                                     right.c.requesting_user_id == left.c.receiving_user_id))).group_by(
+                                                                 left.c.requesting_user_id == right.c.receiving_user_id) & (
+                                                                 right.c.requesting_user_id == left.c.receiving_user_id))).group_by(
             relationship.c.requesting_user_id, relationship.c.receiving_user_id)
         # print(a)
         # b = select([User]).select_from(left.join(right,
@@ -163,11 +166,11 @@ class User(db.Model, UserMixin):
         # print(a.join(f_user, relationship.c.requesting_user_id == f_user.id).join(s_user, relationship.c.receiving_user_id == s_user.id))
         # print(select([User]).select_from(relationship).where((relationship.c.requesting_user_id == user.id) & (relationship.c.receiving_user_id == cls.id)))
         b = select([User.id]).select_from(a).where((relationship.c.requesting_user_id == cls.id) & (
-                    relationship.c.receiving_user_id == user.id))
+                relationship.c.receiving_user_id == user.id))
         # print(a)
         # b = select([User.id]).join(a, (relationship.c.requesting_user_id == cls.id) & (
         #              relationship.c.receiving_user_id == user.id))
-        print(b)
+        # print(b)
         # print(b.c)
         # print(select([User]).c)
         # return select([User]).label("user")
@@ -192,7 +195,8 @@ class Session(db.Model):
     #     backref='session',
     #     order_by='UserSession.date'
     # )
-    users = db.relationship("User", secondary="usersession", order_by="UserSession.date", lazy='dynamic')
+    users = db.relationship("User", secondary="user_session", order_by="UserSession.date",
+                            lazy='dynamic')
     status = db.Column(db.Integer, default=PENDING)
     seed = db.Column(db.Integer, nullable=True)
     extra = db.Column(db.String(1000), nullable=True)
@@ -208,22 +212,72 @@ class Session(db.Model):
 
 
 class UserSession(db.Model):
-    __tablename__ = "usersession"
+    __tablename__ = "user_session"
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
     session_id = db.Column(db.Integer, db.ForeignKey('session.id'), primary_key=True)
     # users = db.relationship("User", backref="sessions")
     # session = db.relationship("Session", backref="users")
-    user = db.relationship(User, backref=db.backref("usersession", cascade="all, delete-orphan", lazy='dynamic'))
+    user = db.relationship(User, backref=db.backref("user_session", cascade="all, delete-orphan",
+                                                    lazy='dynamic'))
     session = db.relationship(Session,
-                              backref=db.backref("usersession", cascade="all, delete-orphan", lazy='dynamic'))
+                              backref=db.backref("user_session", cascade="all, delete-orphan",
+                                                 lazy='dynamic'))
     date = db.Column(db.DateTime, default=datetime.datetime.now())
 
 
 class SessionLogs(db.Model):
-    __tablename__ = "sessionlogs"
+    __tablename__ = "session_logs"
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     user = db.Column(db.Integer, db.ForeignKey('user.id'))
     session = db.Column(db.Integer, db.ForeignKey('session.id'))
     action = db.Column(db.String)
     data = db.Column(db.String, default="{}")
     date = db.Column(db.DateTime, default=datetime.datetime.now())
+
+
+post_tags = db.Table("post_tag",
+                     db.Column('post_id', db.Integer, db.ForeignKey('post.id')),
+                     db.Column('tag_id', db.Integer, db.ForeignKey('tag.id'))
+                     )
+
+
+class Post(db.Model):
+    __tablename__ = "post"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    title = db.Column(db.String(140), nullable=False)
+    slug = db.Column(db.String(140), unique=True)
+    description = db.Column(db.String, nullable=True)
+    discord_id = db.Column(db.String, nullable=True)
+    author_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    img = db.Column(db.String, nullable=True)
+    date = db.Column(db.DateTime, default=datetime.datetime.now())
+    last_edit = db.Column(db.DateTime, onupdate=datetime.datetime.now())
+    tags = db.relationship("Tag",
+                           secondary=post_tags,
+                           backref=db.backref("posts", lazy="dynamic"),
+                           lazy="dynamic")
+
+    def __init__(self, *args, **kwargs):
+        super(Post, self).__init__(*args, **kwargs)
+        # self.slug = self.generate_slug()
+        self.generate_slug()
+
+    def generate_slug(self):
+        if self.title:
+            self.slug = slugify(self.title)
+
+    def __repr__(self):
+        return "<Post {} title: '{}'>".format(self.id, self.title)
+
+
+class Tag(db.Model):
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String(100))
+    slug = db.Column(db.String(100), unique=True)
+
+    def __init__(self, *args, **kwargs):
+        super(Tag, self).__init__(*args, **kwargs)
+        self.slug = slugify(self.name)
+
+    def __repr__(self):
+        return "<Tag {} name: '{}'>".format(self.id, self.name)

@@ -21,7 +21,14 @@
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="navbarSupportedContent">
+            <nav class="navbar navbar-light bg-light">
+              <form id="search" class="form-inline" method="GET" action="/search">
+                <input id="query-field" class="form-control mr-sm-2" type="search" placeholder="Поиск" aria-label="Search" name="q" value="{{request.args.get('q', '')}}">
+                <button class="btn btn-outline-success my-2 my-sm-0" type="submit">Поиск</button>
+              </form>
+            </nav>
             <ul class="navbar-nav ml-auto">
+                <li class="nav-item"><a class="nav-link" href="{{ url_for('posts.index') }}">Блог</a></li>
                 <li class="nav-item"><a class="nav-link" href="{{ url_for('rating') }}">Рейтинг</a></li>
                 {% if current_user.is_active %}
                     {% if current_user.confirmed and current_user.is_authenticated %}
@@ -39,10 +46,9 @@
     </nav>
 </header>
 <!-- Begin page content -->
-<main role="main" class="container col-6">
+<main role="main" class="container col-6 pt-5">
     {% block content %}{% endblock %}
 </main>
-
     {% block scripts %}{% endblock %}
 </body>
 </html>
