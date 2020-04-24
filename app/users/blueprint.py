@@ -20,6 +20,7 @@ login_manager.init_app(app)
 users = Blueprint("users", __name__, template_folder="templates")
 default_breadcrumb_root(users, '.')
 
+
 def check_confirmed(func):
     @wraps(func)
     def decorated_function(*args, **kwargs):
@@ -38,12 +39,12 @@ def load_user(user_id):
 
 @login_manager.unauthorized_handler
 def catch():
-    return redirect("/")
+    return redirect(url_for("users.login", next=request.url if request.url != url_for("users.logout") else ""))
 
 
 @users.errorhandler(404)
 def error404(e):
-    return render_template("users/404.html")
+    return render_template("users/404.html"), 404
 
 
 @users.route('/login', methods=['GET', 'POST'])
@@ -53,7 +54,7 @@ def login():
     if form.validate_on_submit():
         user = db.session.query(User).filter(User.email == form.email.data).first()
         login_user(user, remember=form.remember_me.data)
-        return redirect("/")
+        return redirect(request.args.get("next", "/"))
     return render_template('users/login.html', title='Авторизация', form=form)
 
 

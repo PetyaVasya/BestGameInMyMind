@@ -1,6 +1,7 @@
 import os
 import random
 
+from discord import Webhook, RequestsWebhookAdapter, Embed, Message
 from flask import Flask, request, render_template, session, redirect, url_for
 from flask_admin.contrib.sqla import ModelView
 from flask_admin.form import FileUploadField
@@ -15,7 +16,7 @@ from .config import Config
 
 from flask_migrate import Migrate, MigrateCommand
 from flask_script import Manager
-from flask_admin import Admin
+from flask_admin import Admin, AdminIndexView
 from flask_breadcrumbs import Breadcrumbs, register_breadcrumb
 
 app = Flask(__name__)
@@ -41,15 +42,33 @@ manager = Manager(app)
 manager.add_command("db", MigrateCommand)
 Breadcrumbs(app=app)
 
+
+class AdminMixin:
+
+    def is_accessible(self):
+        return current_user.is_authenticated and current_user.has_role("admin")
+
+    def inaccessible_callback(self, name, **kwargs):
+        return redirect(url_for("users.login", next=request.url))
+
+
+class AdminView(AdminMixin, ModelView):
+    pass
+
+
+class HomeAdminView(AdminMixin, AdminIndexView):
+    pass
+
+
 class SlugModelView(ModelView):
 
-    def after_model_change(self, form, model, is_created):
+    def on_model_change(self, form, model, is_created):
         model.generate_slug()
-        db.session.commit()
+        model.author = current_user
+        return super(SlugModelView, self).on_model_change(form, model, is_created)
 
 
-class FileModelView(ModelView):
-
+class FileModelView(AdminView):
     form_extra_fields = {
         'file': FileUploadField('file', base_path=".")
     }
@@ -107,15 +126,44 @@ class FileModelView(ModelView):
     }
 
 
-admin = Admin(app)
-admin.add_view(ModelView(User, db.session))
-admin.add_view(SlugModelView(Post, db.session))
-admin.add_view(SlugModelView(Tag, db.session))
-admin.add_view(ModelView(Session, db.session))
+class PostModelView(AdminMixin, SlugModelView):
+    form_columns = ["title", "description", "tags", "img"]
+
+    def on_model_change(self, form, model, is_created):
+        if is_created:
+            webhook = Webhook.partial(app.config["WEBHOOK_NEWS_ID"], app.config["WEBHOOK_NEWS_TOKEN"],
+                                      adapter=RequestsWebhookAdapter())
+            embed = Embed()
+            embed.title = model.title
+            embed.description = model.description
+            embed.add_field(name="Теги:", value=", ".join(map(lambda x: "#" + x.name, model.tags)), inline=True)
+            msg: Message = webhook.send(embed=embed, username="Запись", wait=True)
+            model.discord_id = msg.id
+        else:
+            pass
+        super(PostModelView, self).on_model_change(form, model, is_created)
+
+
+
+class TagModelView(AdminMixin, SlugModelView):
+    form_columns = ["name", "posts"]
+
+
+admin = Admin(app, "Admin", url="/", index_view=HomeAdminView(name="Home"))
+admin.add_view(AdminView(User, db.session))
+admin.add_view(AdminView(Role, db.session))
+admin.add_view(PostModelView(Post, db.session))
+admin.add_view(TagModelView(Tag, db.session))
+admin.add_view(AdminView(Session, db.session))
 admin.add_view(FileModelView(File, db.session))
 
 
 # admin.add_view(ModelView(relationship, db.session))
+
+
+@app.errorhandler(404)
+def error404(e):
+    return render_template("main/404.html"), 404
 
 
 @app.route("/")

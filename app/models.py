@@ -4,10 +4,10 @@ from sqlalchemy import func, select, alias, exists, table
 from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
 import re
 from sqlalchemy.orm import aliased
+from transliterate.exceptions import LanguageDetectionError
 
 from .app import db
 from flask_login import UserMixin
-
 from sqlalchemy_utils import EmailType, PasswordType
 
 from .constants import OFFLINE, PENDING
@@ -16,13 +16,21 @@ import transliterate
 
 def slugify(s):
     pattern = r"[^\w+]"
-    return transliterate.translit(re.sub(pattern, "-", s), reversed=True).replace("'", "")
+    r = re.sub(pattern, "-", s)
+    try:
+        return transliterate.translit(r, reversed=True).replace("'", "")
+    except LanguageDetectionError as e:
+        return r
 
 
 relationship = db.Table('relationship',
                         db.Column('requesting_user_id', db.Integer, db.ForeignKey('user.id')),
                         db.Column('receiving_user_id', db.Integer, db.ForeignKey('user.id'))
                         )
+
+roles_users = db.Table("role_user",
+                       db.Column("user_id", db.Integer, db.ForeignKey("user.id")),
+                       db.Column("role_id", db.Integer, db.ForeignKey("role.id")))
 
 
 class User(db.Model, UserMixin):
@@ -32,7 +40,6 @@ class User(db.Model, UserMixin):
     name = db.Column(db.String(50), unique=True)
     discord_id = db.Column(db.String, unique=True, nullable=True)
     email = db.Column(EmailType, unique=True)
-    admin = db.Column(db.Boolean, default=False, nullable=False)
     confirmed = db.Column(db.Boolean, nullable=False, default=False)
     confirmed_on = db.Column(db.DateTime, nullable=True)
     notifications = db.Column(db.Boolean, default=True)
@@ -54,11 +61,9 @@ class User(db.Model, UserMixin):
     status = 0
     token_info = db.Column(db.String, nullable=True)
     posts = db.relationship("Post", order_by="desc(Post.date)", backref="author")
-    # f_followers = db.relationship(
-    #     'Relationship',
-    #     foreign_keys='Relationship.receiving_user_id',
-    #     backref='receiving_user'
-    # )
+    roles = db.relationship("Role", secondary=roles_users,
+                            backref=db.backref("users", lazy="dynamic"),
+                            lazy="dynamic")
 
     def check_password(self, password):
         return self.password == password
@@ -68,7 +73,7 @@ class User(db.Model, UserMixin):
 
     @hybrid_property
     def sessions_c(self):
-        return 0
+        return self.sessions.count()
 
     @hybrid_property
     def win_sessions_c(self):
@@ -146,39 +151,28 @@ class User(db.Model, UserMixin):
     def is_friends(cls, user):
         left = relationship.alias("a")
         right = relationship.alias("b")
-        # a = left.join(right,
-        #               left.c.requesting_user_id == right.c.receiving_user_id
-        #               | left.c.receiving_user_id == right.c.requesting_user_id)
-        # print(select(User).join(a, cls.id == a.left.c.requesting_user_id
-        #                            | cls.id == a.left.c.receiving_user_id))
-        # print(table("user").join(left, left.c.requesting_user_id == cls.id))
-        # print(select([User]).join(a, ))
         a = select([relationship]).select_from(left.join(right,
                                                          (
                                                                  left.c.requesting_user_id == right.c.receiving_user_id) & (
                                                                  right.c.requesting_user_id == left.c.receiving_user_id))).group_by(
             relationship.c.requesting_user_id, relationship.c.receiving_user_id)
-        # print(a)
-        # b = select([User]).select_from(left.join(right,
-        #               left.c.requesting_user_id == right.c.receiving_user_id)).where((left.c.receiving_user_id == user.id) & (left.c.requesting_user_id == cls.id))
-        # b = select([User]).join(a, (right.c.receiving_user_id == user.id) | (left.c.receiving_user_id == user.id))
-        # f_user = aliased(User, name="u1")
-        # s_user = aliased(User, name="u2")
-        # print(a.join(f_user, relationship.c.requesting_user_id == f_user.id).join(s_user, relationship.c.receiving_user_id == s_user.id))
-        # print(select([User]).select_from(relationship).where((relationship.c.requesting_user_id == user.id) & (relationship.c.receiving_user_id == cls.id)))
         b = select([User.id]).select_from(a).where((relationship.c.requesting_user_id == cls.id) & (
                 relationship.c.receiving_user_id == user.id))
-        # print(a)
-        # b = select([User.id]).join(a, (relationship.c.requesting_user_id == cls.id) & (
-        #              relationship.c.receiving_user_id == user.id))
-        # print(b)
-        # print(b.c)
-        # print(select([User]).c)
-        # return select([User]).label("user")
-        # print(cls.id.in_(select([User.id])))
-        # print(cls.id.in_(b))
-        # return cls.id.in_(b)
         return (b)
+
+    @hybrid_method
+    def has_role(self, role):
+        if isinstance(role, str):
+            return role in [role.name for role in self.roles]
+        else:
+            return role in self.roles
+
+
+class Role(db.Model):
+    __tablename__ = "role"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String(100), unique=True)
+    description = db.Column(db.String(300))
 
 
 class Session(db.Model):
@@ -288,6 +282,13 @@ class Tag(db.Model):
 
     def __repr__(self):
         return "<Tag {} name: '{}'>".format(self.id, self.name)
+
+    @hybrid_method
+    def has_tag(self, tag):
+        if isinstance(tag, str):
+            return tag in [tag.name for tag in self.tags]
+        else:
+            return tag in self.tags
 
 
 class File(db.Model):

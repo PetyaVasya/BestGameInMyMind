@@ -94,16 +94,16 @@
                 <tbody>
                 {% for session in sessions.items %}
                 <tr>
-                    <td scope="row">{{ loop.index + 1 }}</td>
+                    <td scope="row">{{ loop.index }}</td>
                     <td>
-                        <a href="{% if session.winner == current_user %}#{% else %}/profile/{{session.winner.name}}{% endif %}">{{session.winner.name}}</a>
+                        <a href="{% if session.winner == current_user %}/profile{% else %}/profile/{{session.winner.name}}{% endif %}">{{session.winner.name}}</a>
                     </td>
                     <td>
                         <ul>
                             {% for suser in session.users %}
                             <li>
                                 <a href="{% if suser == current_user %}
-                                 #
+                                 /profile
                                  {% else %}/profile/{{suser.name}}{% endif %}">{{suser.name}}</a>
                             </li>
                             {% endfor %}

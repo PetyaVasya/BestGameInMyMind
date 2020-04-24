@@ -1,11 +1,12 @@
 import datetime
 import os
+
 basedir = os.path.abspath(os.path.dirname(__file__))
 
 
 class Config(object):
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
-        'sqlite:///' + os.path.join(basedir, 'db/app.db')
+                              'sqlite:///' + os.path.join(basedir, 'db/app.db')
     OAUTH2_CLIENT_ID = os.environ.get('OAUTH2_CLIENT_ID', "702101622762766347")
     OAUTH2_CLIENT_SECRET = os.environ.get('OAUTH2_CLIENT_SECRET',
                                           "72_eMJRHIvjFttxCdRC2hPXSY_spKGTY")
@@ -19,8 +20,11 @@ class Config(object):
     SECURITY_PASSWORD_SALT = 'my_precious_two'
     SECRET_KEY = os.environ.get("SECRET_KEY", OAUTH2_CLIENT_SECRET)
     DISCORD_SERVER_ID = os.environ.get("DISCORD_SERVER_ID", "702102338713944104")
+    WEBHOOK_NEWS_ID = os.environ.get("WEBHOOK_NEWS_ID", "702102599448526868")
+    WEBHOOK_NEWS_TOKEN = os.environ.get("WEBHOOK_NEWS_TOKEN",
+                                        "rWqkqSzKXLcspkOBaCSIkCArQORlg2xbNA3YE-"
+                                        "cfdNvs81js1kL9U9syX0l8HqIPiua6")
     PERMANENT_SESSION_LIFETIME = datetime.timedelta(days=365)
-
     MAIL_SERVER = 'smtp.googlemail.com'
     MAIL_PORT = 465
     MAIL_USE_TLS = False
@@ -32,6 +36,5 @@ class Config(object):
 
     # mail accounts
     MAIL_DEFAULT_SENDER = '123@gmail.com'
-
 
     SQLALCHEMY_TRACK_MODIFICATIONS = False

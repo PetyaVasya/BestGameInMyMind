@@ -1,20 +1,14 @@
-import os
-
 from flask import Blueprint, render_template, url_for, request
 from flask_breadcrumbs import register_breadcrumb
-from flask_login import login_required, current_user
-from werkzeug.utils import secure_filename
 
-from app.app import app, db
 from app.models import Post, Tag
-from app.posts.forms import PostForm
 
 posts = Blueprint("posts", __name__, template_folder="templates")
 
 
 @posts.errorhandler(404)
 def error404(e):
-    return render_template("posts/404.html")
+    return render_template("posts/404.html"), 404
 
 
 @posts.route("/")
