@@ -11,7 +11,6 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import desc
 from werkzeug.utils import secure_filename
 from jinja2 import Markup
-
 from .config import Config
 
 from flask_migrate import Migrate, MigrateCommand
@@ -23,11 +22,13 @@ app = Flask(__name__)
 app.debug = True
 app.config.from_object(Config)
 mail = Mail(app)
-
 db = SQLAlchemy(app)
+
+
 from .models import *
 from .users.blueprint import users, friends, f_discord
 from .posts.blueprint import posts
+from .api.blueprint import api
 
 # if 'http://' in OAUTH2_REDIRECT_URI:
 #     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = 'true'
@@ -36,6 +37,7 @@ app.register_blueprint(users, url_prefix="/")
 app.register_blueprint(friends, url_prefix="/friends")
 app.register_blueprint(f_discord, url_prefix="/discord")
 app.register_blueprint(posts, url_prefix="/blog")
+app.register_blueprint(api, url_prefix="/api")
 
 migrate = Migrate(app, db)
 manager = Manager(app)
@@ -144,7 +146,6 @@ class PostModelView(AdminMixin, SlugModelView):
         super(PostModelView, self).on_model_change(form, model, is_created)
 
 
-
 class TagModelView(AdminMixin, SlugModelView):
     form_columns = ["name", "posts"]
 
@@ -184,10 +185,10 @@ def rating():
     else:
         page = 1
     if friends and current_user.is_authenticated:
-        query = User.query.filter(User.is_friends(current_user))
+        query = User.query.filter(User.is_friends(current_user)).union(User.query.filter(User.id == current_user.id))
     else:
         query = User.query
-    users = query.order_by(User.win_sessions_c).paginate(page=page, per_page=100)
+    users = query.order_by(desc(User.win_sessions_c)).paginate(page=page, per_page=100)
     return render_template("main/rating.html", title="Рейтинг игроков", users=users)
 
 

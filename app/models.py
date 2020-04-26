@@ -1,16 +1,17 @@
 import datetime
 
+from itsdangerous import Serializer, SignatureExpired, BadSignature, TimedJSONWebSignatureSerializer
 from sqlalchemy import func, select, alias, exists, table
 from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
 import re
 from sqlalchemy.orm import aliased
 from transliterate.exceptions import LanguageDetectionError
 
-from .app import db
+from .app import db, app
 from flask_login import UserMixin
 from sqlalchemy_utils import EmailType, PasswordType
 
-from .constants import OFFLINE, PENDING
+from .constants import OFFLINE, PENDING, FINISHED
 import transliterate
 
 
@@ -43,6 +44,7 @@ class User(db.Model, UserMixin):
     confirmed = db.Column(db.Boolean, nullable=False, default=False)
     confirmed_on = db.Column(db.DateTime, nullable=True)
     notifications = db.Column(db.Boolean, default=True)
+    in_client = db.Column(db.Boolean, default=False)
     password = db.Column(PasswordType(
         schemes=[
             'pbkdf2_sha512',
@@ -58,7 +60,6 @@ class User(db.Model, UserMixin):
                                 secondaryjoin=(relationship.c.receiving_user_id == id),
                                 backref=db.backref('f_followers', lazy='dynamic'),
                                 lazy='dynamic')
-    status = 0
     token_info = db.Column(db.String, nullable=True)
     posts = db.relationship("Post", order_by="desc(Post.date)", backref="author")
     roles = db.relationship("Role", secondary=roles_users,
@@ -73,7 +74,7 @@ class User(db.Model, UserMixin):
 
     @hybrid_property
     def sessions_c(self):
-        return self.sessions.count()
+        return self.sessions.filter(Session.status == FINISHED).count()
 
     @hybrid_property
     def win_sessions_c(self):
@@ -95,7 +96,7 @@ class User(db.Model, UserMixin):
 
     @hybrid_property
     def loose_sessions(self):
-        return [s for s in self.sessions if s.winner != self]
+        return [s for s in self.sessions if s.winner != self and s.status == FINISHED]
 
     @property
     def is_authenticated(self):
@@ -167,6 +168,21 @@ class User(db.Model, UserMixin):
         else:
             return role in self.roles
 
+    def generate_auth_token(self, expiration=600):
+        s = TimedJSONWebSignatureSerializer(app.config['SECRET_KEY'], expires_in=expiration)
+        return s.dumps({'id': self.id})
+
+    @staticmethod
+    def verify_auth_token(token):
+        s = TimedJSONWebSignatureSerializer(app.config['SECRET_KEY'])
+        data = s.loads(token)
+        user = User.query.get(data['id'])
+        return user
+
+    @hybrid_property
+    def hosted_session(self):
+        return Session.query.filter(Session.host_id == self.id).first()
+
 
 class Role(db.Model):
     __tablename__ = "role"
@@ -201,9 +217,25 @@ class Session(db.Model):
     def winner(self):
         return User.query.filter(User.id == self.winner_id).first()
 
+    @winner.setter
+    def winner(self, user):
+        self.winner_id = user.id
+
     @winner.expression
     def winner(cls):
         return select([User]).where(cls.winner_id == User.id)
+
+    @hybrid_property
+    def host(self):
+        return User.query.filter(User.id == self.host_id).first()
+
+    @host.setter
+    def host(self, user):
+        self.host_id = user.id
+
+    @host.expression
+    def host(cls):
+        return select([User]).where(cls.host_id == User.id)
 
 
 class UserSession(db.Model):
@@ -241,7 +273,7 @@ class Post(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     title = db.Column(db.String(140), nullable=False)
     slug = db.Column(db.String(140), unique=True)
-    description = db.Column(db.String, nullable=True)
+    description = db.Column(db.String, default="")
     discord_id = db.Column(db.String, nullable=True)
     author_id = db.Column(db.Integer, db.ForeignKey('user.id'))
     img_id = db.Column(db.Integer, db.ForeignKey("file.id"), nullable=True)
@@ -264,6 +296,18 @@ class Post(db.Model):
 
     def __repr__(self):
         return "<Post {} title: '{}'>".format(self.id, self.title)
+
+    @hybrid_property
+    def author(self):
+        return User.query.filter(User.id == self.author_id).first()
+
+    @author.setter
+    def author(self, user):
+        self.author_id = user.id
+
+    @author.expression
+    def author(cls):
+        return select([User]).where(cls.author_id == User.id)
 
 
 class Tag(db.Model):

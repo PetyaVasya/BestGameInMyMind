@@ -10,9 +10,10 @@ from requests_oauthlib import OAuth2Session
 
 from .forms import LoginForm, RegistrationForm
 from app.app import db, app
-from app.email import send_email
-from app.models import User
+from app.email import send_email, send_email_async
+from app.models import User, Session
 from app.token import generate_confirmation_token, confirm_token
+from ..constants import FINISHED
 
 login_manager = LoginManager()
 login_manager.init_app(app)
@@ -74,8 +75,8 @@ def registration():
         confirm_url = url_for('users.confirm_email', token=token, _external=True)
         html = render_template('users/activate.html', confirm_url=confirm_url)
         subject = "Пожалуйста, подтвердите свою почту"
-        send_email(user.email, subject, html)
         login_user(user)
+        send_email_async(user.email, subject, html)
         flash('Письмо для подтверждения было отправленно', 'success')
         return redirect(url_for("users.unconfirmed"))
     return render_template('users/registration.html', title='Регистрация', form=form)
@@ -152,7 +153,7 @@ def profile(name=""):
         page = 1
     if name and name != current_user.name:
         user = User.query.filter(User.name == name).first_or_404()
-        sessions = user.sessions.paginate(page=page, per_page=10)
+        sessions = user.sessions.filter(Session.status == FINISHED).paginate(page=page, per_page=10)
         return render_template("users/profile.html", title="Профиль: " + name,
                                user=user, sessions=sessions)
     if current_user.token_info:
@@ -163,7 +164,7 @@ def profile(name=""):
             session["oauth2_token"] = None
     else:
         user = {}
-    sessions = current_user.sessions.paginate(page=page, per_page=10)
+    sessions = current_user.sessions.filter(Session.status == FINISHED).paginate(page=page, per_page=10)
     return render_template("users/profile.html", title="Профиль", user=current_user,
                            discord_user=user, sessions=sessions)
 
@@ -286,29 +287,3 @@ def callback():
     current_user.token_info = json.dumps(token)
     db.session.commit()
     return redirect(url_for('users.profile'))
-
-
-# @f_discord.route('/revoke')
-# @login_required
-# def revoke():
-#     if session.get("oauth2_token"):
-#         discord_s = make_session(token=session['oauth2_token'])
-#         print(requests.post(app.config["REVOKE_URL"], {"access_token": session["oauth2_token"]["access_token"]}).text)
-#         # print(discord_s.post(discord_s.authorization_url(app.config["REVOKE_URL"])[0], {"access_token": session["oauth2_token"]["access_token"]}).text)
-#         # session["oauth2_token"] = None
-#         # url = discord_s.authorization_url(app.config["REVOKE_URL"])[0]
-#         # url += "&access_token=%s&client_secret=%s" % (session["oauth2_token"]["access_token"], app.config["OAUTH2_CLIENT_SECRET"])
-#         print(discord_s.request("post", app.config["REVOKE_URL"], withhold_token=True).text)
-#         print(discord_s.request("post", app.config["REVOKE_URL"], {"access_token": session["oauth2_token"]["access_token"]}, client_id=app.config["OAUTH2_CLIENT_ID"], client_secret=app.config["OAUTH2_CLIENT_SECRET"]).text)
-#         return redirect(url_for("users.profile"))
-#         # return redirect(url)
-#     return redirect(url_for("users.profile"))
-#
-#
-# @discord.route('/me')
-# def me():
-#     discord = make_session(token=session.get('oauth2_token'))
-#     users = discord.get(API_BASE_URL + '/users/@me').json()
-#     guilds = discord.get(API_BASE_URL + '/users/@me/guilds').json()
-#     connections = discord.get(API_BASE_URL + '/users/@me/connections').json()
-#     return jsonify(users=users, guilds=guilds, connections=connections)
