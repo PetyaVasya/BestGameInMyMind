@@ -1,6 +1,7 @@
 import json
 from random import random
 
+import discord
 from itsdangerous import SignatureExpired, BadSignature
 from sqlalchemy import desc
 from validate_email import validate_email
@@ -8,20 +9,20 @@ from flask import Blueprint, g, jsonify, request, url_for, render_template
 from flask_httpauth import HTTPBasicAuth
 
 from app.api import Game
-from app.app import db, datetime
+from app.app import db, datetime, app, OrderedDict
 from app.constants import FINISHED, STARTED, PENDING
 from app.email import send_email_async
 from app.models import User, Session, SessionLogs, Post, Tag
 from app.token import generate_confirmation_token
 
 auth = HTTPBasicAuth()
+discord_auth = HTTPBasicAuth()
 
 api = Blueprint("api", __name__, template_folder="templates")
 
 
 @auth.verify_password
 def verify_password(username_or_token, password):
-    # first try to authenticate by token
     try:
         user = User.verify_auth_token(username_or_token)
     except SignatureExpired:
@@ -42,6 +43,49 @@ def verify_password(username_or_token, password):
     return True
 
 
+@discord_auth.verify_password
+def discord_verify_password(token, password):
+    if app.config["DISCORD_TOKEN"] == token:
+        g.user = User.query.filter((User.name == request.args.get("user-name")) | (
+                User.name == request.form.get("user-name"))).first_or_404()
+        return True
+    try:
+        user = User.verify_auth_token(token)
+    except SignatureExpired:
+        user = User.query.filter(
+            (User.name == token) | (User.email == token)).first()
+        if not user or user.password != password:
+            return False
+        user.in_client = False
+        db.session.commit()
+    except BadSignature:
+        user = User.query.filter(
+            (User.name == token) | (User.email == token)).first()
+        if not user or user.password != password:
+            return False
+    if not user.confirmed:
+        return False
+    g.user = user
+    return True
+
+
+def send_session_end(s):
+    try:
+        webhook = discord.Webhook.partial(app.config["WEBHOOK_SESSION_ID"],
+                                          app.config["WEBHOOK_SESSION_TOKEN"],
+                                          adapter=discord.RequestsWebhookAdapter())
+        embed = discord.Embed()
+        embed.title = "Сессия #{}".format(s.id)
+        embed.colour = discord.Colour.darker_grey()
+        embed.description = "Результаты игры"
+        embed.add_field(name="Победитель:", value="{} | <@!{}>".format(s.winner.name,
+                                                                       s.winner.discord) if s.winner.discord else s.winner.name)
+        embed.add_field(name="Игроки:", value=", ".join(s.users.with_entities(User.name).all()))
+        webhook.send(embed=embed)
+    except Exception as e:
+        print(e)
+
+
 @api.route("/users/create_user", methods=['POST'])
 def create_user():
     if not validate_email(request.form["email"]):
@@ -49,7 +93,8 @@ def create_user():
     u = User(confirmed=False)
     if not request.form.get("name"):
         return "Name empty", 400
-    elif User.query.filter(User.name == request.form["name"]).first():
+    elif User.query.filter(User.name == request.form["name"]).first() or request.form[
+        "name"].isdigit():
         return "user.name", 400
     u.name = request.form["name"]
     if not request.form.get("email"):
@@ -106,7 +151,7 @@ def get_auth_token():
     db.session.commit()
     user = {"id": g.user.id, "name": g.user.name, 'session_hash': token.decode('ascii'), }
     if g.user.discord_id:
-        user["discord"] = g.user.discord_id
+        user["discord"] = int(g.user.discord_id)
     return jsonify(user)
 
 
@@ -141,6 +186,7 @@ def log_out():
                                       date=datetime.datetime.now())
                 s.status = FINISHED
                 db.session.add(win_log)
+                send_session_end(s)
             db.session.add(surrender_log)
     g.user.in_client = False
     g.user = None
@@ -169,7 +215,7 @@ def create_session():
     for i in s.users:
         user = {"id": i.id, "name": i.name}
         if i.discord_id:
-            user["discord"] = i.discord_id
+            user["discord"] = int(i.discord_id)
         response["users"].append(user)
     response["seed"] = s.seed
     response["extra"] = s.extra
@@ -237,6 +283,7 @@ def disconnect():
                     Game.ServerGame().sessions[s.id].ended = True
                 except KeyError as e:
                     print(e)
+                send_session_end(s)
             db.session.add(surrender_log)
             db.session.commit()
             return ""
@@ -256,7 +303,7 @@ def get_session():
             for i in s.users:
                 user = {"id": i.id, "name": i.name}
                 if i.discord_id:
-                    user["discord"] = i.discord_id
+                    user["discord"] = int(i.discord_id)
                 response["users"].append(user)
             response["seed"] = s.seed
             response["extra"] = s.extra
@@ -270,15 +317,13 @@ def get_session():
         for s in Session.query.all():
             if s.status == FINISHED:
                 continue
-            serv = {"id": s.id, "name": s.name, "desc": s.desc,
-                    "limit": s.user_limit,
-                    "status": s.status,
-                    "users": []}
+            serv = {"id": s.id, "name": s.name, "desc": s.desc, "limit": s.user_limit,
+                    "status": s.status, "users": []}
             serv["seed"] = s.seed
             for i in s.users:
                 user = {"id": i.id, "name": i.name}
                 if i.discord_id:
-                    user["discord"] = i.discord_id
+                    user["discord"] = int(i.discord_id)
                 serv["users"].append(user)
             if s.host:
                 serv["host"] = {"id": s.host.id, "name": s.host.name}
@@ -328,19 +373,19 @@ def get_session_changes(id):
         return jsonify(response)
     elif s.status == PENDING:
         return "GAME NOT STARTED", 404
-    last: SessionLogs = SessionLogs.query.filter(SessionLogs.session == id)\
+    last: SessionLogs = SessionLogs.query.filter(SessionLogs.session == id) \
         .filter(SessionLogs.action == "GET").filter(
         SessionLogs.user == g.user.id).order_by(
         -SessionLogs.id).first()
     now = datetime.datetime.now()
     if last:
-        logs = SessionLogs.query.filter(SessionLogs.session == id)\
+        logs = SessionLogs.query.filter(SessionLogs.session == id) \
             .filter(last.date <= SessionLogs.date).filter(
             SessionLogs.date <= now).filter(SessionLogs.user != g.user.id).filter(
             SessionLogs.action != "GET").all()
         last.date = now
     else:
-        logs = SessionLogs.query.filter(SessionLogs.session == id)\
+        logs = SessionLogs.query.filter(SessionLogs.session == id) \
             .filter(SessionLogs.date <= now).filter(
             SessionLogs.user != g.user.id).filter(SessionLogs.action != "GET").all()
         get_log = SessionLogs(user=g.user.id, session=s.id, action="GET", date=now)
@@ -379,6 +424,7 @@ def surrender(id):
             Game.ServerGame().sessions[s.id].ended = True
         except KeyError as e:
             print(e)
+        send_session_end(s)
     db.session.add(surrender_log)
     db.session.commit()
     return ""
@@ -449,31 +495,31 @@ def execute_action(id, action):
 
 
 @api.route("/friends", methods=["GET"])
-@auth.login_required
+@discord_auth.login_required
 def get_friends():
     response = {"confirmed": [], "received": [], "requested": []}
     for f in g.user.friends:
-        friend = {"name": f.name, "session": {}}
+        friend = {"name": f.name, "session": {}, "status": f.in_client}
         if f.discord_id:
-            friend["discord"] = f.discord_id
+            friend["discord"] = int(f.discord_id)
         if f.sessions:
             friend["session"]["id"] = f.sessions[0].id
             friend["session"]["status"] = f.sessions[0].status
             friend["session"]["name"] = f.sessions[0].name
         response["confirmed"].append(friend)
     for f in g.user.followers:
-        friend = {"name": f.name, "session": {}}
+        friend = {"name": f.name, "session": {}, "status": f.in_client}
         if f.discord_id:
-            friend["discord"] = f.discord_id
+            friend["discord"] = int(f.discord_id)
         if f.sessions:
             friend["session"]["id"] = f.sessions[0].id
             friend["session"]["status"] = f.sessions[0].status
             friend["session"]["name"] = f.sessions[0].name
         response["received"].append(friend)
     for f in g.user.follows:
-        friend = {"name": f.name, "session": {}}
+        friend = {"name": f.name, "session": {}, "status": f.in_client}
         if f.discord_id:
-            friend["discord"] = f.discord_id
+            friend["discord"] = int(f.discord_id)
         if f.sessions:
             friend["session"]["id"] = f.sessions[0].id
             friend["session"]["status"] = f.sessions[0].status
@@ -483,9 +529,9 @@ def get_friends():
 
 
 @api.route("/friends/add", methods=["POST"])
-@auth.login_required
+@discord_auth.login_required
 def add_friend():
-    f = User.query.filter(User.name == request.form["name"]).first()
+    f = User.query.filter(User.name == request.form["friend-name"]).first_or_404()
     if f == g.user:
         return "You are your friend", 400
     if not f:
@@ -498,7 +544,7 @@ def add_friend():
     db.session.commit()
     friend = {"friends": f in g.user.friends, "name": f.name, "session": {}}
     if f.discord_id:
-        friend["discord"] = f.discord_id
+        friend["discord"] = int(f.discord_id)
     if f.sessions:
         friend["session"]["id"] = f.sessions[0].id
         friend["session"]["status"] = f.sessions[0].status
@@ -507,9 +553,9 @@ def add_friend():
 
 
 @api.route("/friends/remove", methods=["POST"])
-@auth.login_required
+@discord_auth.login_required
 def remove_friend():
-    f = User.query.filter(User.name == request.form["name"]).first()
+    f = User.query.filter(User.name == request.form["friend-name"]).first()
     if not f:
         return "User not exist", 404
     if f == g.user:
@@ -517,31 +563,53 @@ def remove_friend():
     if f not in g.user.follows and f not in g.user.friends:
         return "This user not friend", 404
     g.user.f_follows.remove(f)
+    db.session.commit()
     return ""
 
 
 @api.route("/users", methods=["GET"])
 def get_users():
     users = User.query.all()
-    return jsonify(users_to_json(users))
+    rates = list(OrderedDict.fromkeys(map(lambda x: x[1],
+                                          db.session.query(User, User.win_sessions_c).order_by(
+                                              desc(User.win_sessions_c)).all())))
+    res = users_to_json(users)
+    for ind in range(len(users)):
+        res[ind]["place"] = rates.index(res[ind]["wins"]) + 1
+    return jsonify()
 
 
 @api.route("/users/<name>")
 def get_user(name):
-    u = User.query.filter((User.name == name) | (User.id == name)).first_or_404()
-    return jsonify(user_to_json(u))
+    u = User.query.filter(
+        (User.name == name) | (User.discord_id == name) | (User.id == name)).first_or_404()
+    rates = list(OrderedDict.fromkeys(map(lambda x: x[1],
+                                          db.session.query(User, User.win_sessions_c).order_by(
+                                              desc(User.win_sessions_c)).all())))
+    res = user_to_json(u)
+    res["place"] = rates.index(u.win_sessions_c) + 1
+    return jsonify(res)
 
 
 @api.route("/top")
 def get_top():
     users = User.query.order_by(desc(User.win_sessions_c)).all()
-    count = request.args.get("count", 10)
+    count = request.args.get("count")
+    if count and count.isdigit():
+        count = int(count)
+    else:
+        count = 10
     return jsonify(users_to_json(users[:count]))
 
 
 @api.route("/posts")
 def get_posts():
-    posts = Post.query.order_by(desc(Post.date)).limit(request.args.get("count", 100)).all()
+    count = request.args.get("count")
+    if count and count.isdigit():
+        count = min(500, max(1, int(count)))
+    else:
+        count = 100
+    posts = Post.query.order_by(desc(Post.date)).limit(count).all()
     return jsonify(posts_to_json(posts))
 
 
@@ -553,13 +621,14 @@ def get_post(slug):
 
 def user_to_json(u: User, full_sessions=False):
     user = {"name": u.name, "id": u.id, "wins": u.win_sessions_c, "loose": u.loose_sessions_c,
-            "all": u.sessions_c}
+            "all": u.sessions_c, "link": "{}/profile/{}".format(request.url, u.name),
+            "status": u.in_client}
     if full_sessions:
         user["sessions"] = sessions_to_json(u.sessions.all())
     else:
         user["sessions"] = [s.id for s in u.sessions]
     if u.discord_id:
-        user["discord"] = u.discord_id
+        user["discord"] = int(u.discord_id)
     return user
 
 
@@ -572,10 +641,13 @@ def users_to_json(users, full_sessions=False):
 
 def post_to_json(p: Post):
     post = {"title": p.title, "slug": p.slug, "desc": p.description, "author": p.author_id,
-            "tags": [t.name for t in p.tags], "created": p.date.microsecond,
-            "last_updated": p.last_edit.microsecond}
+            "tags": [t.name for t in p.tags], "created": p.date.microsecond * 1000,
+            "last_updated": p.last_edit.microsecond * 1000,
+            "link": "{}blog/{}".format(request.host_url, p.slug)}
     if p.discord_id:
-        post["discord"] = p.discord_id
+        post["discord"] = int(p.discord_id)
+    if p.img:
+        post["img"] = request.host_url[:-1] + p.img.path
     return post
 
 

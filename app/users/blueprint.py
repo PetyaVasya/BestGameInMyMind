@@ -40,7 +40,8 @@ def load_user(user_id):
 
 @login_manager.unauthorized_handler
 def catch():
-    return redirect(url_for("users.login", next=request.url if request.url != url_for("users.logout") else ""))
+    return redirect(
+        url_for("users.login", next=request.url if request.url != url_for("users.logout") else ""))
 
 
 @users.errorhandler(404)
@@ -51,6 +52,8 @@ def error404(e):
 @users.route('/login', methods=['GET', 'POST'])
 @register_breadcrumb(users, '.login', 'Авторизация')
 def login():
+    if current_user.is_authenticated:
+        return redirect(url_for("home"))
     form = LoginForm()
     if form.validate_on_submit():
         user = db.session.query(User).filter(User.email == form.email.data).first()
@@ -62,6 +65,8 @@ def login():
 @users.route('/registration', methods=['GET', 'POST'])
 @register_breadcrumb(users, '.registration', 'Регистрация')
 def registration():
+    if current_user.is_authenticated:
+        return redirect(url_for("home"))
     form = RegistrationForm()
     if form.validate_on_submit():
         try:
@@ -137,7 +142,8 @@ def profile_breadcrumbs(*args, **kwargs):
     user = User.query.filter(User.name == name).first()
     if not user:
         return [{'text': 'Профиль', 'url': url_for("users.profile")}, {'text': "Ошибка", 'url': ""}]
-    return [{'text': 'Профиль', 'url': url_for("users.profile")}, {'text': user.name, 'url': url_for("users.profile", name=user.name)}]
+    return [{'text': 'Профиль', 'url': url_for("users.profile")},
+            {'text': user.name, 'url': url_for("users.profile", name=user.name)}]
 
 
 @users.route("/profile")
@@ -164,7 +170,8 @@ def profile(name=""):
             session["oauth2_token"] = None
     else:
         user = {}
-    sessions = current_user.sessions.filter(Session.status == FINISHED).paginate(page=page, per_page=10)
+    sessions = current_user.sessions.filter(Session.status == FINISHED).paginate(page=page,
+                                                                                 per_page=10)
     return render_template("users/profile.html", title="Профиль", user=current_user,
                            discord_user=user, sessions=sessions)
 
@@ -177,21 +184,21 @@ friends = Blueprint("friends", __name__, template_folder="templates")
 def get_friends():
     response = {"confirmed": [], "received": [], "requested": []}
     for f in current_user.friends:
-        friend = {"name": f.name, "status": f.status, "session": {}}
+        friend = {"name": f.name, "status": f.in_client, "session": {}}
         if f.sessions:
             friend["session"]["id"] = f.sessions[0].id
             friend["session"]["status"] = f.sessions[0].status
             friend["session"]["name"] = f.sessions[0].name
         response["confirmed"].append(friend)
     for f in current_user.followers:
-        friend = {"name": f.name, "status": f.status, "session": {}}
+        friend = {"name": f.name, "status": f.in_client, "session": {}}
         if f.sessions:
             friend["session"]["id"] = f.sessions[0].id
             friend["session"]["status"] = f.sessions[0].status
             friend["session"]["name"] = f.sessions[0].name
         response["received"].append(friend)
     for f in current_user.follows:
-        friend = {"name": f.name, "status": f.status, "session": {}}
+        friend = {"name": f.name, "status": f.in_client, "session": {}}
         if f.sessions:
             friend["session"]["id"] = f.sessions[0].id
             friend["session"]["status"] = f.sessions[0].status
@@ -214,7 +221,7 @@ def add_friend():
         return "Request already sent", 400
     current_user.f_follows.append(f)
     db.session.commit()
-    friend = {"friends": f in current_user.friends, "name": f.name, "status": f.status,
+    friend = {"friends": f in current_user.friends, "name": f.name, "status": f.in_client,
               "session": {}}
     if f.sessions:
         friend["session"]["id"] = f.sessions[0].id
@@ -233,7 +240,6 @@ def remove_friend():
         return "You are your friend", 400
     if f not in current_user.follows and f not in current_user.friends:
         return "This user not friend and not in you follows", 404
-    print(current_user.f_follows)
     current_user.f_follows.remove(f)
     db.session.commit()
     return ""
@@ -284,6 +290,12 @@ def callback():
         client_secret=app.config["OAUTH2_CLIENT_SECRET"],
         authorization_response=request.url.replace("http", "https"))
     current_user.discord_id = discord_s.get(app.config["API_BASE_URL"] + '/users/@me').json()["id"]
+    headers = {"Authorization": f"Bot {app.config['DISCORD_TOKEN']}"}
+    requests.put(
+        app.config["API_BASE_URL"] + "/guilds/{}/members/{}".format(app.config["DISCORD_SERVER_ID"],
+                                                                    current_user.discord_id),
+        headers=headers, json={"access_token": token["access_token"]})
+    flash(current_user.name + " Added to discord server", "success")
     current_user.token_info = json.dumps(token)
     db.session.commit()
     return redirect(url_for('users.profile'))

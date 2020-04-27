@@ -1,6 +1,7 @@
 import os
 import random
 
+import discord
 from discord import Webhook, RequestsWebhookAdapter, Embed, Message
 from flask import Flask, request, render_template, session, redirect, url_for
 from flask_admin.contrib.sqla import ModelView
@@ -23,7 +24,6 @@ app.debug = True
 app.config.from_object(Config)
 mail = Mail(app)
 db = SQLAlchemy(app)
-
 
 from .models import *
 from .users.blueprint import users, friends, f_discord
@@ -51,7 +51,10 @@ class AdminMixin:
         return current_user.is_authenticated and current_user.has_role("admin")
 
     def inaccessible_callback(self, name, **kwargs):
-        return redirect(url_for("users.login", next=request.url))
+        if current_user.is_authenticated:
+            return redirect(url_for("home"))
+        else:
+            return redirect(url_for("users.login", next=request.url))
 
 
 class AdminView(AdminMixin, ModelView):
@@ -66,7 +69,6 @@ class SlugModelView(ModelView):
 
     def on_model_change(self, form, model, is_created):
         model.generate_slug()
-        model.author = current_user
         return super(SlugModelView, self).on_model_change(form, model, is_created)
 
 
@@ -132,18 +134,26 @@ class PostModelView(AdminMixin, SlugModelView):
     form_columns = ["title", "description", "tags", "img"]
 
     def on_model_change(self, form, model, is_created):
+        super(PostModelView, self).on_model_change(form, model, is_created)
         if is_created:
-            webhook = Webhook.partial(app.config["WEBHOOK_NEWS_ID"], app.config["WEBHOOK_NEWS_TOKEN"],
+            webhook = Webhook.partial(app.config["WEBHOOK_NEWS_ID"],
+                                      app.config["WEBHOOK_NEWS_TOKEN"],
                                       adapter=RequestsWebhookAdapter())
             embed = Embed()
+            embed.colour = discord.Colour.blurple()
+            if model.img:
+                embed.set_image(url=request.host_url[:-1] + model.img.path)
             embed.title = model.title
             embed.description = model.description
-            embed.add_field(name="Теги:", value=", ".join(map(lambda x: "#" + x.name, model.tags)), inline=True)
-            msg: Message = webhook.send(embed=embed, username="Запись", wait=True)
+            embed.add_field(name="Теги:", value=", ".join(
+                map(lambda x: "#" + x.name, model.tags)) if model.tags.count() else "-",
+                            inline=True)
+            embed.set_footer(text="{}blog/{}".format(request.host_url, model.slug))
+            msg: Message = webhook.send(embed=embed, wait=True)
             model.discord_id = msg.id
         else:
             pass
-        super(PostModelView, self).on_model_change(form, model, is_created)
+        return True
 
 
 class TagModelView(AdminMixin, SlugModelView):
@@ -185,7 +195,8 @@ def rating():
     else:
         page = 1
     if friends and current_user.is_authenticated:
-        query = User.query.filter(User.is_friends(current_user)).union(User.query.filter(User.id == current_user.id))
+        query = User.query.filter(User.is_friends(current_user)).union(
+            User.query.filter(User.id == current_user.id))
     else:
         query = User.query
     users = query.order_by(desc(User.win_sessions_c)).paginate(page=page, per_page=100)
@@ -215,5 +226,3 @@ def search():
     res = res.paginate(page=page, per_page=10)
     return render_template("main/search.html", res=res)
 
-# if __name__ == '__main__':
-#     app.run()

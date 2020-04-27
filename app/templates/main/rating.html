@@ -25,7 +25,7 @@
                 <tbody>
                 {% for user in users.items %}
                 <tr>
-                    <td scope="row">{{loop.index + 100 * (users.page - 1)}}</td>
+                    <td scope="row">{{user.place}}</td>
                     <td><a href="{% if suser == current_user %}
                                  #
                                  {% else %}/profile/{{user.name}}{% endif %}">{{user.name}}</a>

@@ -37,6 +37,8 @@ class RegistrationForm(FlaskForm):
         user = User.query.filter_by(name=name.data).first()
         if user is not None:
             raise ValidationError('Данный никнейм уже занят')
+        if name.data.isdigit():
+            raise ValidationError("Имя не может состоять только из цифр")
 
     def validate_email(self, email):
         user = User.query.filter_by(email=email.data).first()

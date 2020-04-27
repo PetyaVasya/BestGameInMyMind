@@ -20,10 +20,16 @@ class Config(object):
     SECURITY_PASSWORD_SALT = 'my_precious_two'
     SECRET_KEY = os.environ.get("SECRET_KEY", OAUTH2_CLIENT_SECRET)
     DISCORD_SERVER_ID = os.environ.get("DISCORD_SERVER_ID", "702102338713944104")
-    WEBHOOK_NEWS_ID = os.environ.get("WEBHOOK_NEWS_ID", "702102599448526868")
+    DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN", "NzAyMTAxNjIyNzYyNzY2MzQ3.Xq"
+                                                    "VJhA.NM1NU5LBnNUjOHbSiM5JIuslswM")
+    WEBHOOK_NEWS_ID = os.environ.get("WEBHOOK_NEWS_ID", "704339781810913363")
     WEBHOOK_NEWS_TOKEN = os.environ.get("WEBHOOK_NEWS_TOKEN",
-                                        "rWqkqSzKXLcspkOBaCSIkCArQORlg2xbNA3YE-"
-                                        "cfdNvs81js1kL9U9syX0l8HqIPiua6")
+                                        "KgbrBlPg5fGdMypnlHsIaCW0KLgff82ue4FbZmFp_"
+                                        "4Qj7s3Nk1mWIiPKTWYKQiNiYIse")
+    WEBHOOK_SESSION_ID = os.environ.get("WEBHOOK_SESSION_ID", "704339787754242188")
+    WEBHOOK_SESSION_TOKEN = os.environ.get("WEBHOOK_SESSION_TOKEN",
+                                        "gbdmnWyNGR6cdfLiDoTInH8NfJ6KEb3FrgN"
+                                        "4TcCtBJD3178m9AT4MFOff6GIZYNgULd4")
     PERMANENT_SESSION_LIFETIME = datetime.timedelta(days=365)
     MAIL_SERVER = 'smtp.googlemail.com'
     MAIL_PORT = 465

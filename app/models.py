@@ -1,7 +1,8 @@
 import datetime
+from collections import OrderedDict
 
 from itsdangerous import Serializer, SignatureExpired, BadSignature, TimedJSONWebSignatureSerializer
-from sqlalchemy import func, select, alias, exists, table
+from sqlalchemy import func, select, alias, exists, table, desc
 from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
 import re
 from sqlalchemy.orm import aliased
@@ -82,9 +83,8 @@ class User(db.Model, UserMixin):
 
     @win_sessions_c.expression
     def win_sessions_c(cls):
-        return select([func.count(User.sessions)]). \
-            where(Session.winner_id == cls.id). \
-            label('total_balance')
+        r = select([func.count(Session.id)]).where(Session.winner_id == cls.id).label("wins")
+        return r
 
     @hybrid_property
     def loose_sessions_c(self):
@@ -182,6 +182,13 @@ class User(db.Model, UserMixin):
     @hybrid_property
     def hosted_session(self):
         return Session.query.filter(Session.host_id == self.id).first()
+
+    @hybrid_property
+    def place(self):
+        rates = list(OrderedDict.fromkeys(map(lambda x: x[1],
+                                              db.session.query(User, User.win_sessions_c).order_by(
+                                                  desc(User.win_sessions_c)).all())))
+        return rates.index(self.win_sessions_c) + 1
 
 
 class Role(db.Model):
@@ -291,7 +298,7 @@ class Post(db.Model):
 
     def generate_slug(self):
         slug = slugify(self.title)
-        c = max(0, Post.query.filter(Post.slug == slug).count() - 1)
+        c = Post.query.filter(Post.slug == slug).count()
         self.slug = slug + ("-{}".format(c + 1) if c else "")
 
     def __repr__(self):
