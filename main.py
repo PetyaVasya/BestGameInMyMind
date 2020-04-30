@@ -4,10 +4,8 @@ import re
 import discord
 import typing
 
-import schedule as schedule
 from discord.ext import commands
 import json
-import requests
 import aiohttp
 from discord.ext.commands import BadArgument
 
@@ -444,6 +442,10 @@ async def on_ready():
             try:
                 role = guild.default_role if permission["role"] == "everyone" else guild.get_role(
                     permission["role"])
+                if not role:
+                    print("Вы указали неверный role(id) в settings.json в permissions")
+                    await bot.logout()
+                    return
             except KeyError:
                 print("Вы не указали role(ее id) в settings.json в permissions")
                 await bot.logout()
