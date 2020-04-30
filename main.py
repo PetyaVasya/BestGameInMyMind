@@ -129,7 +129,7 @@ class UUserConverter(commands.UserConverter):
         return result
 
 
-class RandomThings(commands.Cog):
+class DiscordBot(commands.Cog):
 
     def __init__(self, bot):
         self.bot: commands.Bot = bot
@@ -495,7 +495,7 @@ async def every_half_hour_update_top():
 
 
 def main():
-    bot.add_cog(RandomThings(bot))
+    bot.add_cog(DiscordBot(bot))
     if not settings.get("api"):
         print("Вы не указали api в settings.json")
         return
