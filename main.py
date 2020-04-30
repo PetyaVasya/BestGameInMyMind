@@ -494,12 +494,17 @@ async def every_half_hour_update_top():
         await asyncio.sleep(1800)
 
 
-if __name__ == "__main__":
+def main():
     bot.add_cog(RandomThings(bot))
     if not settings.get("api"):
         print("Вы не указали api в settings.json")
-        exit()
+        return
     try:
         bot.run(settings["token"])
     except KeyError:
         print("Вы не указали токен в settings.json")
+        return
+
+
+if __name__ == "__main__":
+    main()
