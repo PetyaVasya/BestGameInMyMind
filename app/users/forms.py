@@ -1,3 +1,5 @@
+import re
+
 from flask_wtf import FlaskForm
 from wtforms import PasswordField, BooleanField, SubmitField, StringField
 from wtforms.fields.html5 import EmailField
@@ -39,6 +41,9 @@ class RegistrationForm(FlaskForm):
             raise ValidationError('Данный никнейм уже занят')
         if name.data.isdigit():
             raise ValidationError("Имя не может состоять только из цифр")
+        if not re.fullmatch(r"[a-zA-Z1-9_]*", name.data):
+            raise ValidationError("Имя может содержать лишь латинские буквы,"
+                                  " цифры и символы подчеркивания")
 
     def validate_email(self, email):
         user = User.query.filter_by(email=email.data).first()

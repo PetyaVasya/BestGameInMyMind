@@ -170,7 +170,7 @@ class User(db.Model, UserMixin):
 
     def generate_auth_token(self, expiration=600):
         s = TimedJSONWebSignatureSerializer(app.config['SECRET_KEY'], expires_in=expiration)
-        return s.dumps({'id': self.id})
+        return s.dumps({'id': self.id, "created_at": datetime.datetime.now().microsecond})
 
     @staticmethod
     def verify_auth_token(token):
@@ -181,7 +181,7 @@ class User(db.Model, UserMixin):
 
     @hybrid_property
     def hosted_session(self):
-        return Session.query.filter(Session.host_id == self.id).first()
+        return Session.query.filter(Session.host_id == self.id).filter(Session.status != FINISHED).first()
 
     @hybrid_property
     def place(self):
@@ -256,7 +256,7 @@ class UserSession(db.Model):
     session = db.relationship(Session,
                               backref=db.backref("user_session", cascade="all, delete-orphan",
                                                  lazy='dynamic'))
-    date = db.Column(db.DateTime, default=datetime.datetime.now())
+    date = db.Column(db.DateTime, default=datetime.datetime.now)
 
 
 class SessionLogs(db.Model):
@@ -266,7 +266,7 @@ class SessionLogs(db.Model):
     session = db.Column(db.Integer, db.ForeignKey('session.id'))
     action = db.Column(db.String)
     data = db.Column(db.String, default="{}")
-    date = db.Column(db.DateTime, default=datetime.datetime.now())
+    date = db.Column(db.DateTime, default=datetime.datetime.now)
 
 
 post_tags = db.Table("post_tag",

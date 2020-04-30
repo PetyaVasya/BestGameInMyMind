@@ -14,6 +14,7 @@ from app.constants import FINISHED, STARTED, PENDING
 from app.email import send_email_async
 from app.models import User, Session, SessionLogs, Post, Tag
 from app.token import generate_confirmation_token
+import re
 
 auth = HTTPBasicAuth()
 discord_auth = HTTPBasicAuth()
@@ -79,8 +80,8 @@ def send_session_end(s):
         embed.colour = discord.Colour.darker_grey()
         embed.description = "Результаты игры"
         embed.add_field(name="Победитель:", value="{} | <@!{}>".format(s.winner.name,
-                                                                       s.winner.discord) if s.winner.discord else s.winner.name)
-        embed.add_field(name="Игроки:", value=", ".join(s.users.with_entities(User.name).all()))
+                                                                       s.winner.discord_id) if s.winner.discord_id else s.winner.name)
+        embed.add_field(name="Игроки:", value=", ".join(map(lambda x: x[0], s.users.with_entities(User.name).all())))
         webhook.send(embed=embed)
     except Exception as e:
         print(e)
@@ -94,7 +95,7 @@ def create_user():
     if not request.form.get("name"):
         return "Name empty", 400
     elif User.query.filter(User.name == request.form["name"]).first() or request.form[
-        "name"].isdigit():
+        "name"].isdigit() or not re.fullmatch(r"[a-zA-Z1-9_]*", request.form["name"]):
         return "user.name", 400
     u.name = request.form["name"]
     if not request.form.get("email"):
@@ -143,12 +144,22 @@ def create_user():
 
 @api.route('/log_in', methods=["POST"])
 @auth.login_required
-def get_auth_token():
+def login():
     if g.user.in_client:
         return "User online", 400
     token = g.user.generate_auth_token()
     g.user.in_client = True
     db.session.commit()
+    user = {"id": g.user.id, "name": g.user.name, 'session_hash': token.decode('ascii'), }
+    if g.user.discord_id:
+        user["discord"] = int(g.user.discord_id)
+    return jsonify(user)
+
+
+@api.route('/token', methods=["POST"])
+@auth.login_required
+def get_token():
+    token = g.user.generate_auth_token()
     user = {"id": g.user.id, "name": g.user.name, 'session_hash': token.decode('ascii'), }
     if g.user.discord_id:
         user["discord"] = int(g.user.discord_id)
@@ -205,7 +216,7 @@ def create_session():
     elif sessions and sessions[0].status == PENDING:
         return "You in session", 400
     s = Session(name=request.form["name"], host_id=g.user.id, desc=request.form["desc"],
-                user_limit=2)
+                user_limit=4)
     s.users.append(g.user)
     db.session.add(s)
     db.session.commit()
@@ -253,6 +264,7 @@ def disconnect():
     if sessions:
         s = sessions[0]
         if s.status == FINISHED:
+            print("aaaa?")
             return "Session is finished", 400
         elif s.status == PENDING:
             s.users.remove(g.user)
@@ -288,6 +300,7 @@ def disconnect():
             db.session.commit()
             return ""
     else:
+        print("wtf")
         return "User not in game", 400
 
 
@@ -432,12 +445,12 @@ def surrender(id):
 
 def check_action(u, s, action, param):
     player = -1
-    print(action, param)
     game = Game.ServerGame()
     for ind, us in enumerate(s.users, 1):
         if us == u:
             player = ind
             break
+    print(action, param, player)
     if player == -1:
         print("WTF")
         return False
@@ -502,7 +515,7 @@ def get_friends():
         friend = {"name": f.name, "session": {}, "status": f.in_client}
         if f.discord_id:
             friend["discord"] = int(f.discord_id)
-        if f.sessions:
+        if f.sessions.count():
             friend["session"]["id"] = f.sessions[0].id
             friend["session"]["status"] = f.sessions[0].status
             friend["session"]["name"] = f.sessions[0].name
@@ -511,7 +524,7 @@ def get_friends():
         friend = {"name": f.name, "session": {}, "status": f.in_client}
         if f.discord_id:
             friend["discord"] = int(f.discord_id)
-        if f.sessions:
+        if f.sessions.count():
             friend["session"]["id"] = f.sessions[0].id
             friend["session"]["status"] = f.sessions[0].status
             friend["session"]["name"] = f.sessions[0].name
@@ -520,7 +533,7 @@ def get_friends():
         friend = {"name": f.name, "session": {}, "status": f.in_client}
         if f.discord_id:
             friend["discord"] = int(f.discord_id)
-        if f.sessions:
+        if f.sessions.count():
             friend["session"]["id"] = f.sessions[0].id
             friend["session"]["status"] = f.sessions[0].status
             friend["session"]["name"] = f.sessions[0].name
@@ -545,7 +558,7 @@ def add_friend():
     friend = {"friends": f in g.user.friends, "name": f.name, "session": {}}
     if f.discord_id:
         friend["discord"] = int(f.discord_id)
-    if f.sessions:
+    if f.sessions.count():
         friend["session"]["id"] = f.sessions[0].id
         friend["session"]["status"] = f.sessions[0].status
         friend["session"]["name"] = f.sessions[0].name

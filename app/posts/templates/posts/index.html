@@ -29,17 +29,17 @@
 <nav aria-label="Page navigation example">
     <ul class="pagination justify-content-center">
         <li class="page-item {%if not posts.has_prev %}disabled{% endif %}">
-            <a class="page-link" href="./?page={{posts.prev_num}}" tabindex="-1"
+            <a class="page-link" href="?page={{posts.prev_num}}" tabindex="-1"
                aria-disabled="true">Предыдущая</a>
         </li>
         {% for page in posts.iter_pages() %}
         <li class="page-item"><a
                 class="page-link {% if page == posts.page %} active {% endif %}"
-                href="./?page={{page}}">{{page}}</a></li>
+                href="?page={{page}}">{{page}}</a></li>
         {% endfor %}
         <li class="page-item {%if not posts.has_next %}disabled{% endif %}">
             <a class="page-link"
-               href="./?page={{posts.next_num}}">Следующая</a>
+               href="?page={{posts.next_num}}">Следующая</a>
         </li>
     </ul>
 </nav>

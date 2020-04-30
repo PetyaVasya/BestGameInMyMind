@@ -94,7 +94,7 @@
                 <tbody>
                 {% for session in sessions.items %}
                 <tr>
-                    <td scope="row">{{ loop.index }}</td>
+                    <td scope="row">{{ loop.index + (sessions.page - 1) * 10}}</td>
                     <td>
                         <a href="{% if session.winner == current_user %}/profile{% else %}/profile/{{session.winner.name}}{% endif %}">{{session.winner.name}}</a>
                     </td>
@@ -116,17 +116,17 @@
             <nav aria-label="User sessions navigation">
                 <ul class="pagination justify-content-center">
                     <li class="page-item {%if not sessions.has_prev %}disabled{% endif %}">
-                        <a class="page-link" href="./?page={{sessions.prev_num}}" tabindex="-1"
+                        <a class="page-link" href="?page={{sessions.prev_num}}" tabindex="-1"
                            aria-disabled="true">Предыдущая</a>
                     </li>
                     {% for page in sessions.iter_pages() %}
                     <li class="page-item"><a
                             class="page-link {% if page == sessions.page %} active {% endif %}"
-                            href="./?page={{page}}">{{page}}</a></li>
+                            href="?page={{page}}">{{page}}</a></li>
                     {% endfor %}
                     <li class="page-item {%if not sessions.has_next %}disabled{% endif %}">
                         <a class="page-link"
-                           href="./?page={{sessions.next_num}}">Следующая</a>
+                           href="?page={{sessions.next_num}}">Следующая</a>
                     </li>
                 </ul>
             </nav>
