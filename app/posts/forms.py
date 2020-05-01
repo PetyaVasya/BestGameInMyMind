@@ -1,9 +1,14 @@
 from flask_wtf import FlaskForm
-from wtforms import PasswordField, BooleanField, SubmitField, StringField, TextAreaField, FileField
-from wtforms.fields.html5 import EmailField
+from wtforms import PasswordField, SubmitField, StringField, TextAreaField, FileField
 from wtforms.validators import DataRequired, Email, EqualTo, ValidationError
 
-from app.models import User, Post
+from app.models import User
+
+# Unused file
+
+
+def allowed_file(name):
+    return False
 
 
 class PostForm(FlaskForm):

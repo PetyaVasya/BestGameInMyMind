@@ -30,9 +30,6 @@ from .users.blueprint import users, friends, f_discord
 from .posts.blueprint import posts
 from .api.blueprint import api
 
-# if 'http://' in OAUTH2_REDIRECT_URI:
-#     os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = 'true'
-
 app.register_blueprint(users, url_prefix="/")
 app.register_blueprint(friends, url_prefix="/friends")
 app.register_blueprint(f_discord, url_prefix="/discord")
@@ -77,10 +74,6 @@ class FileModelView(AdminView):
         'file': FileUploadField('file', base_path=".")
     }
 
-    # form_excluded_columns = {
-    #     "path", "name", "type"
-    # }
-
     def _change_path_data(self, _form):
         try:
             storage_file = _form.file.data
@@ -122,8 +115,8 @@ class FileModelView(AdminView):
             return Markup('<img src="%s" width="100">' % model.path)
 
         if model.type in ['mp3']:
-            return Markup(
-                '<audio controls="controls"><source src="%s" type="audio/mpeg" /></audio>' % model.path)
+            return Markup('<audio controls="controls">'
+                          '<source src="%s" type="audio/mpeg" /></audio>' % model.path)
 
     column_formatters = {
         'path': _list_thumbnail
@@ -167,9 +160,6 @@ admin.add_view(PostModelView(Post, db.session))
 admin.add_view(TagModelView(Tag, db.session))
 admin.add_view(AdminView(Session, db.session))
 admin.add_view(FileModelView(File, db.session))
-
-
-# admin.add_view(ModelView(relationship, db.session))
 
 
 @app.errorhandler(404)

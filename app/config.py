@@ -12,6 +12,7 @@ class Config(object):
                                           "72_eMJRHIvjFttxCdRC2hPXSY_spKGTY")
     OAUTH2_REDIRECT_URI = 'http://aa69bc2a.ngrok.io/discord/callback'
     UPLOAD_FOLDER = "static/img/upload"
+    OAUTHLIB_INSECURE_TRANSPORT = 'http://' in OAUTH2_REDIRECT_URI
 
     API_BASE_URL = os.environ.get('API_BASE_URL', 'https://discordapp.com/api')
     AUTHORIZATION_BASE_URL = API_BASE_URL + '/oauth2/authorize'

@@ -1,0 +1,51 @@
+# Hex types
+GRASS = 101
+WATER = 102
+BUILDING = 103
+RESOURCE = 104
+MENU = 105
+# -------------
+
+# Building types
+CASTLE = 1031
+STORAGE = 1032
+ROAD = 1033
+CANTEEN = 1034
+BARRACKS = 1035
+TOWER = 1036
+PROJECT = 1039
+# -------------
+
+# Storage types
+WOODEN = 81
+STONE = 82
+# -------------
+
+# Resources types
+FOREST = 1041
+MINE = 1042
+# -------------
+
+# Resource
+WOOD = 1043
+ROCK = 1044
+MEN = 1045
+# -------------
+
+# Game presets
+FPS = 30
+PADDING = 10
+RATE = 1 / FPS
+STANDARD_WIDTH = 64
+STANDARD_HEIGHT = 48
+START_WOOD = START_ROCKS = 5
+RESOURCES_FOR_BUILD = {CANTEEN: (3, 0, 10), BARRACKS: (6, 3, 10), TOWER: (5, 5, 10)}
+MANS_FOR_DESTROY = {STORAGE: 5, ROAD: 1}
+MANS_FOR_ATTACK = {STORAGE: 8}
+ATTACK_RATES = {TOWER: 1, CASTLE: 1}
+ATTACK_RANGES = {TOWER: 128, CASTLE: 128}
+
+TRADE = {FOREST: 10,
+         MINE: 10}
+
+

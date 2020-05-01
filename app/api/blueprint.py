@@ -79,13 +79,18 @@ def send_session_end(s):
         embed.title = "Сессия #{}".format(s.id)
         embed.colour = discord.Colour.darker_grey()
         embed.description = "Результаты игры"
-        embed.add_field(name="Победитель:", value="{} | <@!{}>".format(s.winner.name,
-                                                                       s.winner.discord_id) if s.winner.discord_id else s.winner.name)
-        embed.add_field(name="Игроки:", value=", ".join(map(lambda x: x[0], s.users.with_entities(User.name).all())))
+        winner = "{} | <@!{}>".format(s.winner.name, s.winner.discord_id) if s.winner.discord_id \
+            else s.winner.name
+        embed.add_field(name="Победитель:", value=winner)
+        embed.add_field(name="Игроки:",
+                        value=", ".join(
+                            map(lambda x: x[0], s.users.with_entities(User.name).all())))
         webhook.send(embed=embed)
     except Exception as e:
         print(e)
 
+
+# TVOI GIMN
 
 @api.route("/users/create_user", methods=['POST'])
 def create_user():
@@ -122,25 +127,7 @@ def create_user():
         print(e)
         return "", 400
     return jsonify({"id": u.id, "name": u.name})
-    # except IntegrityError as e:
-    #     return "User existed: " + e.args[0].rsplit(".", 1)[-1], 400
 
-
-# @api.route("/log_in", methods=['POST'])
-# def log_in():
-#     u = check_user(request.headers["name"], request.headers["pass"])
-#     if isinstance(u, User):
-#         if u.status == ONLINE:
-#             return "User online", 400
-#         elif u:
-#             u.status = ONLINE
-#             u.session_hash = str(
-#                 hash(u.name + str(u.password) + str(int(datetime.datetime.now().timestamp()))))
-#             db.session.commit()
-#             return jsonify({"id": u.id, "name": u.name, "status": ONLINE,
-#                             "session_hash": u.session_hash})
-#     else:
-#         return u
 
 @api.route('/log_in', methods=["POST"])
 @auth.login_required
@@ -216,7 +203,7 @@ def create_session():
     elif sessions and sessions[0].status == PENDING:
         return "You in session", 400
     s = Session(name=request.form["name"], host_id=g.user.id, desc=request.form["desc"],
-                user_limit=4)
+                user_limit=2)
     s.users.append(g.user)
     db.session.add(s)
     db.session.commit()
@@ -578,6 +565,9 @@ def remove_friend():
     g.user.f_follows.remove(f)
     db.session.commit()
     return ""
+
+
+# Webserver + bot
 
 
 @api.route("/users", methods=["GET"])

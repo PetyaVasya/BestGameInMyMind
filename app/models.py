@@ -1,18 +1,17 @@
 import datetime
 from collections import OrderedDict
 
-from itsdangerous import Serializer, SignatureExpired, BadSignature, TimedJSONWebSignatureSerializer
-from sqlalchemy import func, select, alias, exists, table, desc
+from itsdangerous import TimedJSONWebSignatureSerializer
+from sqlalchemy import func, select, desc
 from sqlalchemy.ext.hybrid import hybrid_property, hybrid_method
 import re
-from sqlalchemy.orm import aliased
 from transliterate.exceptions import LanguageDetectionError
 
 from .app import db, app
 from flask_login import UserMixin
 from sqlalchemy_utils import EmailType, PasswordType
 
-from .constants import OFFLINE, PENDING, FINISHED
+from .constants import PENDING, FINISHED
 import transliterate
 
 
@@ -114,11 +113,10 @@ class User(db.Model, UserMixin):
     def friends(cls):
         left = relationship.alias("a")
         right = relationship.alias("b")
-        a = select([relationship]).select_from(left.join(right,
-                                                         (
-                                                                 left.c.requesting_user_id == right.c.receiving_user_id) & (
-                                                                 right.c.requesting_user_id == left.c.receiving_user_id))).group_by(
-            relationship.c.requesting_user_id, relationship.c.receiving_user_id)
+        l_r = left.join(right, (left.c.requesting_user_id == right.c.receiving_user_id) & (
+                right.c.requesting_user_id == left.c.receiving_user_id))
+        a = select([relationship]).select_from(l_r).group_by(relationship.c.requesting_user_id,
+                                                             relationship.c.receiving_user_id)
         b = select([User]).select_from(a).where(
             (relationship.c.requesting_user_id == cls.id)).group_by(User.id)
         return b
@@ -152,10 +150,9 @@ class User(db.Model, UserMixin):
     def is_friends(cls, user):
         left = relationship.alias("a")
         right = relationship.alias("b")
-        a = select([relationship]).select_from(left.join(right,
-                                                         (
-                                                                 left.c.requesting_user_id == right.c.receiving_user_id) & (
-                                                                 right.c.requesting_user_id == left.c.receiving_user_id))).group_by(
+        l_r = left.join(right, (left.c.requesting_user_id == right.c.receiving_user_id) & (
+                    right.c.requesting_user_id == left.c.receiving_user_id))
+        a = select([relationship]).select_from(l_r).group_by(
             relationship.c.requesting_user_id, relationship.c.receiving_user_id)
         b = select([User.id]).select_from(a).where((relationship.c.requesting_user_id == cls.id) & (
                 relationship.c.receiving_user_id == user.id))
@@ -181,7 +178,8 @@ class User(db.Model, UserMixin):
 
     @hybrid_property
     def hosted_session(self):
-        return Session.query.filter(Session.host_id == self.id).filter(Session.status != FINISHED).first()
+        return Session.query.filter(Session.host_id == self.id).filter(
+            Session.status != FINISHED).first()
 
     @hybrid_property
     def place(self):
@@ -207,12 +205,6 @@ class Session(db.Model):
     name = db.Column(db.String(50), nullable=False)
     desc = db.Column(db.String(300), nullable=True)
     host_id = db.Column(db.Integer, nullable=True)
-    # users = db.relationship(
-    #     'UserSession',
-    #     foreign_keys='UserSession.session_id',
-    #     backref='session',
-    #     order_by='UserSession.date'
-    # )
     users = db.relationship("User", secondary="user_session", order_by="UserSession.date",
                             lazy='dynamic')
     status = db.Column(db.Integer, default=PENDING)
@@ -249,8 +241,6 @@ class UserSession(db.Model):
     __tablename__ = "user_session"
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), primary_key=True)
     session_id = db.Column(db.Integer, db.ForeignKey('session.id'), primary_key=True)
-    # users = db.relationship("User", backref="sessions")
-    # session = db.relationship("Session", backref="users")
     user = db.relationship(User, backref=db.backref("user_session", cascade="all, delete-orphan",
                                                     lazy='dynamic'))
     session = db.relationship(Session,
