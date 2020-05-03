@@ -71,24 +71,25 @@ async def update_top():
 async def get_user(name):
     try:
         async with aiohttp.ClientSession() as session:
-            return await (
-                await session.get(settings["api"] + "/api/users/{}".format(name))).json()
+            res = await session.get(settings["api"] + "/api/users/{}".format(name))
+            if res.status == 404:
+                raise ServerCode404
+            return await res.json()
     except aiohttp.ClientConnectionError:
         raise ServerNotResponded
-    except aiohttp.ContentTypeError:
-        raise ServerCode404
 
 
 async def get_friends(name):
     try:
         async with aiohttp.ClientSession() as session:
-            return await (await session.get(settings["api"] + "/api/friends",
-                                            auth=aiohttp.BasicAuth(settings["token"], ""),
-                                            params={"user-name": name})).json()
+            res = await session.get(settings["api"] + "/api/friends",
+                                    auth=aiohttp.BasicAuth(settings["token"], ""),
+                                    params={"user-name": name})
+            if res.status == 404:
+                raise ServerCode404
+            return await res.json()
     except aiohttp.ClientConnectionError:
         raise ServerNotResponded
-    except aiohttp.ContentTypeError:
-        raise ServerCode404
 
 
 _utils_get = discord.utils.get
@@ -452,7 +453,8 @@ async def on_ready():
                 return
             del permission["role"]
             overwrites[role] = discord.PermissionOverwrite(**permission)
-        t_channel: discord.TextChannel = await guild.create_text_channel(name, overwrites=overwrites)
+        t_channel: discord.TextChannel = await guild.create_text_channel(name,
+                                                                         overwrites=overwrites)
 
         for message in channel.get("messages", []):
             try:
