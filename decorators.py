@@ -1,7 +1,8 @@
 from functools import wraps, partial
 
 import pygame
-from constants import TRANSPARENT, STILL_RUNNING
+
+from constants import TRANSPARENT, STILL_RUNNING, SERVER, NOT_AUTHORISED
 
 
 def zero_args(func):
@@ -94,6 +95,7 @@ def check_visible(func):
 
 def async_lock(func):
 
+    @wraps(func)
     async def new(self, *args, **kwargs):
         if getattr(self, func.__name__ + "_lock").locked():
             return STILL_RUNNING

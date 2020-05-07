@@ -5,8 +5,6 @@ from copy import copy
 import pygame
 from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
-
-import Environment
 from InputTypes import *
 from constants import *
 from decorators import *
@@ -22,10 +20,19 @@ def int_vec(vec):
 class UIObject:
 
     def __init__(self, pos=pygame.Vector2(0, 0), width=0, height=0):
-        self.world_position = pos
-        self.rect = pygame.Rect(*pos, width, height)
-        self.visible = True
-        self.alive = True
+        self.world_position: pygame.Vector2 = pos
+        self.rect: pygame.Rect = pygame.Rect(*pos, width, height)
+        self.visible: bool = True
+        self.alive: bool = True
+        self._active: bool = True
+
+    @property
+    def active(self):
+        return self._active
+
+    @active.setter
+    def active(self, value):
+        self._active = value
 
     @update_pos
     def set_world_position(self, pos):
@@ -58,8 +65,8 @@ class UIObject:
         return self.rect.h
 
     @height.setter
-    def set_height(self, height):
-        self.rect.height = height
+    def height(self, height):
+        self.rect.h = height
 
     def get_click(self, pos: pygame.Vector2):
         pass
@@ -114,7 +121,7 @@ Menu Format
 
 class GameMenu(UIObject):
     menus = {DEFAULT_MENU: {(0, 2): BUILD},
-             BUILD: {(2, 2): CANTEEN, (4, 2): ROAD, (1, 1): STORAGE},
+             BUILD: {(2, 2): CANTEEN, (4, 2): TOWER, (6, 2): BARRACKS},
              TOP_LINE_MENU: {(0, 0): MAKE_PATH, (2, 0): DELETE_PATH, (4, 0): DESTROY},
              ASK: {(0, 2): ACCEPT, (2, 2): CANCEL}}
 
@@ -126,16 +133,12 @@ class GameMenu(UIObject):
         self.build = None
         self.width = width
         self.height = STANDARD_WIDTH * (height - 0.5)
-        self.hexagons = {i: pygame.transform.scale(
-            pygame.image.load(SPRITES_PATHS[i]),
-            (STANDARD_WIDTH, STANDARD_WIDTH)) for i in
-            (MENU_BACKGROUND, DESTROY, DELETE_PATH, MAKE_PATH, BACKWARD, BUILD, ACCEPT, CANCEL)
-        }
+        self.hexagons = {k: Game.load_image(v) for k, v in MENU_PATHS.items()}
         self.hexagons.update({
             i: pygame.transform.scale(
                 pygame.image.load(MENU_PATHS[i]),
                 (STANDARD_WIDTH, STANDARD_WIDTH)) for i in
-            (CANTEEN, ROAD, STORAGE)
+            (CANTEEN, ROAD, STORAGE, BARRACKS)
         })
 
     @check_visible
@@ -179,7 +182,7 @@ class GameMenu(UIObject):
     def get_click(self, vector2):
         vector2 = pygame.Vector2(vector2)
         r_shift = (self.width - self.width // 64 * 64) / 2
-        vector2 -= self.world_position + [-r_shift + STANDARD_WIDTH // 2,
+        vector2 -= self.world_position + [r_shift,
                                           STANDARD_WIDTH // 2 - STANDARD_HEIGHT // 2 + 2.5]
         current = [int(vector2.x // 32),
                    int(vector2.y // STANDARD_HEIGHT)]
@@ -199,8 +202,10 @@ class GameMenu(UIObject):
 
     def get_hexagon_by_pos(self, pos):
         click_hex = self.get_click(pos)
+        if self.action == ASK:
+            return self.menus[ASK].get(click_hex)
         return self.menus.get(self.action, self.menus[TOP_LINE_MENU]).get(click_hex, self.menus[
-            DEFAULT_MENU].get(click_hex, None))
+            DEFAULT_MENU].get(click_hex, self.menus[TOP_LINE_MENU].get(click_hex, None)))
 
     def on_click(self, vector2):
         current = self.get_click(vector2)
@@ -219,14 +224,16 @@ class GameMenu(UIObject):
         elif self.action == BUILD:
             build = self.menus[BUILD].get(current, None)
             if build:
-                self.build = Environment.create_hexagon(game.session.player,
-                                                        current, PROJECT, build)
+                self.build = Game.create_hexagon(game.session.player,
+                                                 current, PROJECT, build)
+                self.build.building.selected = True
         elif self.menus[DEFAULT_MENU].get(current, None) == BUILD:
             self.action = BUILD
             build = self.menus[BUILD].get(current, None)
             if build:
-                self.build = Environment.create_hexagon(game.session.player,
-                                                        current, PROJECT, build)
+                self.build = Game.create_hexagon(game.session.player,
+                                                 current, PROJECT, build)
+                self.build.building.selected = True
         else:
             self.action = self.menus[DEFAULT_MENU].get(current, None)
 
@@ -244,7 +251,7 @@ class Statusbar(dict, UIObject):
         self.screen = screen
         self.base = base_color
         self.height = height
-        self.font = pygame.font.SysFont('Comic Sans MS', STATUSBAR_FONT)
+        self.font = pygame.font.SysFont('Comic Sans MS', Game.Game().STATUSBAR_FONT)
         self.width = width
 
     def __setitem__(self, key, value):
@@ -302,6 +309,25 @@ class Statusbar(dict, UIObject):
                 self.font.render(self.strip_value(bar.value, section), False, (240, 240, 240)),
                 self.upgrade_coords(ind * section + PADDING + self.height * 0.8, self.height * 0.2))
 
+    def get_click(self, pos: pygame.Vector2):
+        center = self.height * 0.45
+        section = min(self.width // len(self.values()), self.width // 5)
+        height = (self.height - 4) / 2
+        for ind, bar in enumerate(sorted(self.items(), key=lambda x: x[1].priority)):
+            c_start = self.upgrade_coords(ind * section + PADDING, center - height)
+            c_end = self.upgrade_coords(ind * section + section - PADDING, center + height)
+            if (c_start.x <= pos.x <= c_end.x) and (c_start.y <= pos.y <= c_end.y):
+                return bar
+
+    def get_bar_rect(self, name):
+        center = self.height * 0.45
+        section = min(self.width // len(self.values()), self.width // 5)
+        height = (self.height - 4)
+        for ind, bar in enumerate(sorted(self.items(), key=lambda x: x[1].priority)):
+            if bar[0] == name:
+                c_start = self.upgrade_coords(ind * section + PADDING, center - height / 2)
+                return pygame.Rect(*c_start, section, height)
+
 
 class Bar:
 
@@ -310,11 +336,18 @@ class Bar:
         self.value = value
         self.priority = priority
 
+    def __iadd__(self, other: int):
+        self.value += other
+
+    def __isub__(self, other: int):
+        self.value -= other
+
 
 class ProgressBar(UIObject, Drawable):
 
     def __init__(self, maximum, pos=pygame.Vector2(0, 0), base_color=BASE_COLOR,
-                 width=STANDARD_WIDTH, height=16, vertical=False, rounded=True, t_float=False):
+                 width=STANDARD_WIDTH, height=16, vertical=False, rounded=True, t_float=False,
+                 bar_color=(0, 0, 255)):
         super().__init__(pos, width, height)
         self.maximum = maximum
         self.value = 0
@@ -327,9 +360,10 @@ class ProgressBar(UIObject, Drawable):
         self.vertical = vertical
         self.rounded = rounded
         self.t_float = t_float
+        self.bar_color = bar_color
 
     def set_value(self, value):
-        self.value = min(0, max(self.maximum, value))
+        self.value = min(self.maximum, max(0, value))
 
     def set_maximum(self, maximum):
         self.maximum = max(1, maximum)
@@ -376,7 +410,7 @@ class ProgressBar(UIObject, Drawable):
             if (i == 2) and self.value:
                 new = pygame.Vector2(center, center + self.vertical ^ 1)
                 int_vec(new)
-                pygame.draw.circle(surface, (0, 0, 255),
+                pygame.draw.circle(surface, self.bar_color,
                                    self.upgrade_coords(new.yx if self.vertical else new.xy + shift),
                                    center // i)
                 val = ((self.rect.h - self.rect.w) if self.vertical else (
@@ -386,7 +420,7 @@ class ProgressBar(UIObject, Drawable):
                 new1 = pygame.Vector2(center + val, center - self.vertical)
                 int_vec(new)
                 int_vec(new1)
-                pygame.draw.line(surface, (0, 0, 255),
+                pygame.draw.line(surface, self.bar_color,
                                  self.upgrade_coords(new.yx if self.vertical else new.xy + shift),
                                  self.upgrade_coords(new1.yx if self.vertical else new1.xy + shift),
                                  p // i)
@@ -408,7 +442,7 @@ class ProgressBar(UIObject, Drawable):
                              p // i)
             if (i == 2) and (self.value == self.maximum):
                 new = pygame.Vector2(np - center, center + self.vertical ^ 1)
-                pygame.draw.circle(surface, (0, 0, 255),
+                pygame.draw.circle(surface, self.bar_color,
                                    self.upgrade_coords(new.yx if self.vertical else new.xy + shift),
                                    int(center // i))
             else:
@@ -430,10 +464,29 @@ class ProgressBar(UIObject, Drawable):
     def is_empty(self):
         return self.value == 0
 
+    def set_world_position(self, pos):
+        super().set_world_position(pos)
+        self.bar_rect.x = pos.x
+        self.bar_rect.y = pos.y
 
-class Tip:
+    @property
+    def size(self):
+        return UIObject.size.fget(self)
 
-    def __init__(self, title="", text="", width=300, background=(0, 0, 0),
+    @size.setter
+    def size(self, value):
+        UIObject.size.fset(self, value)
+        if self.vertical:
+            self.bar_rect.x = self.width // 2
+            self.bar_rect.y = self.height - self.width // 4
+        else:
+            self.bar_rect.x = self.height // 2
+            self.bar_rect.y = self.width - self.height // 4
+
+
+class Tip(Drawable):
+
+    def __init__(self, title="", text="", width=300, background=BASE_COLOR,
                  border_color=(255, 0, 0)):
         self.title = title
         self.text = text
@@ -446,7 +499,6 @@ class Tip:
         self.height = self.title_surf.get_height() + self.text_surf.get_height()
 
     def set_data(self, title, text):
-        # game = Game.Game()
         self.title_surf = ptext.getsurf(title, width=self.width, bold=True, underline=True)
         self.text_surf = ptext.getsurf(text, width=self.width)
         self.height = self.title_surf.get_height() + self.text_surf.get_height()
@@ -460,13 +512,13 @@ class Tip:
             paint_pos.y -= self.height + 2 * self.border_width
         if pos.x + self.width + 2 * self.border_width > screen.get_width():
             paint_pos.y -= self.width + 2 * self.border_width
-        pygame.draw.rect(screen, self.background_color,
-                         [paint_pos.x + self.border_width - 1, paint_pos.y + self.border_width - 1,
-                          self.width + 2,
-                          self.height + 2])
-        pygame.draw.rect(screen, self.border_color,
-                         [paint_pos.x, paint_pos.y, self.width + 2 * self.border_width,
-                          self.height + 2 * self.border_width], self.border_width)
+        self.draw_rect(self.border_color,
+                       [paint_pos.x, paint_pos.y, self.width + 2 * self.border_width,
+                        self.height + 2 * self.border_width], surface=screen)
+        self.draw_rect(self.background_color,
+                       [paint_pos.x + self.border_width, paint_pos.y + self.border_width,
+                        self.width,
+                        self.height], surface=screen)
         screen.blit(self.title_surf, paint_pos + [self.border_width] * 2)
         screen.blit(self.text_surf, paint_pos + [self.border_width,
                                                  self.border_width + self.title_surf.get_height()])
@@ -480,6 +532,15 @@ class Button(UIObject):
         self.background = None
         self.action = None
         self.rect = pygame.Rect(*pos, 0, 0)
+
+    @property
+    def active(self):
+        return UIObject.active.fget(self)
+
+    @active.setter
+    def active(self, value):
+        UIObject.active.fset(self, value)
+        self.background.active = value
 
     @property
     def screen(self):
@@ -504,7 +565,7 @@ class Button(UIObject):
     @click_in
     @zero_args
     def get_click(self):
-        if self.action:
+        if self.active and self.action:
             return self.action()
 
     @check_visible
@@ -515,6 +576,9 @@ class Button(UIObject):
 
     def tick(self, delta):
         self.background.tick(delta)
+
+    def click(self):
+        return self.action()
 
 
 class ScrollBar(ProgressBar):
@@ -536,7 +600,6 @@ class ScrollBar(ProgressBar):
         ProgressBar.size.fset(self, value)
         self.step = (self.rect.h - self.rect.w) / self.maximum
 
-    @in_this
     def get_click(self, pos):
         if not self.bar_rect.collidepoint(*pos):
             return None
@@ -577,10 +640,7 @@ class ScrollBar(ProgressBar):
     @length.setter
     def length(self, value):
         self._length = value
-        if self.value > self.maximum:
-            self.value = self.maximum - self.length
 
-    @in_this
     def mouse_flip(self, pos):
         if not self.rect.collidepoint(*pos):
             self.moving = False
@@ -610,13 +670,12 @@ class ScrollBar(ProgressBar):
                              self.upgrade_coords(center - 1,
                                                  center + self.step * self.value) + shift,
                              center)
-        pygame.draw.line(surface, (0, 0, 255),
-                         self.upgrade_coords(center - 1, center + self.step * max(0, min(self.value,
-                                                                                         self.maximum - self.length))) + shift,
-                         self.upgrade_coords(center - 1,
-                                             center + self.step * min(self.value + self.length,
-                                                                      self.maximum)) + shift,
-                         center)
+        s = self.upgrade_coords(center - 1, center +
+                                self.step * max(0, min(self.value, self.maximum - self.length))) \
+            + shift
+        e = self.upgrade_coords(center - 1, center + self.step * min(self.value + self.length,
+                                                                     self.maximum)) + shift
+        pygame.draw.line(surface, (0, 0, 255), s, e, center)
         if (self.value + self.length) >= self.maximum:
             pygame.draw.circle(surface, (0, 0, 255),
                                self.upgrade_coords(center, self.rect.h - center) + shift,
@@ -653,7 +712,6 @@ class DataElement(UIObject):
 
     def set_action(self, action):
         self.action = action
-        self.action = action
         return self
 
     def add_attr(self, k, v):
@@ -663,18 +721,19 @@ class DataElement(UIObject):
     @zero_args
     def get_click(self):
         if self.action:
-            return self.action()
+            return self.action(self)
         return None
 
     def tick(self, delta):
+        pass
+
+    @check_visible
+    @zero_args
+    def flip(self):
         self.view = self.background.copy()
         if self.data:
             for i in self.data.keys():
                 self.view_data[i](self.view, getattr(self, i))
-
-    @check_visible
-    def flip(self):
-        self.screen.blit(self.view, self.world_position)
 
     def set_data(self, data):
         """
@@ -689,7 +748,11 @@ class DataElement(UIObject):
         self.data = data
         for k, v in data.items():
             setattr(self, k, v)
-        self.tick(0)
+            self.add_attr(k, v)
+        self.view = self.background.copy()
+        if self.data:
+            for i in self.data.keys():
+                self.view_data[i](self.view, getattr(self, i))
         return self
 
     def copy(self):
@@ -697,6 +760,9 @@ class DataElement(UIObject):
             self.background).set_action(self.action)
         new.view_data = self.view_data
         return new
+
+    def click(self):
+        self.action(self)
 
 
 class DataRecycleView(UIObject, Drawable):
@@ -742,6 +808,7 @@ class DataRecycleView(UIObject, Drawable):
 
     def set_view(self, view: DataElement):
         self.view = view
+        self.view.screen = self.screen
         a = self.data_rect.height / self.view.rect.height
         self.app = a % 1
         self.count = floor(a)
@@ -750,25 +817,30 @@ class DataRecycleView(UIObject, Drawable):
         return self
 
     def set_data(self, data):
-        self.data = data
         if not self.count:
             raise Exception("Set View early")
-        for i in range(min(len(self.data), self.count + 2)):
-            self.elements[i].set_data(self.data[i])
+        for i in range(self.count + 2):
+            if i < len(data):
+                self.elements[i].set_data(data[i])
+            else:
+                self.elements[i].set_data({})
+        self.data = data
         self.scroll.set_maximum(len(self.data))
         self.scroll.length = self.data_rect.height / self.view.rect.height
         self.scroll.value = 0
         return self
 
-    @in_this
+    @update_pos
+    @click_in
     def get_click(self, pos: pygame.Vector2):
         if self.data_rect.collidepoint(*pos):
-            r = None
-            for element in self.elements:
-                r2 = element.get_click(pos)
-                if r2:
-                    r = r2
-            return r
+
+            e = int((self.view.rect.h * self.scroll.value + pos.y - self.world_position.y)
+                    // self.view.rect.h)
+            if (e < self.scroll.maximum) and self.elements[e].action:
+                return self.elements[e].click()
+            else:
+                return None
         else:
             res = self.scroll.get_click(pos)
             if not res:
@@ -776,26 +848,27 @@ class DataRecycleView(UIObject, Drawable):
             if res > 0:
                 if (1 - self.app) < self.scroll.value < len(self.data) - self.count:
                     element = self.elements.pop(0)
-                    self.elements.append(element.set_data(self.data[floor(self.scroll.value) + 2]))
+                    self.elements.append(
+                        element.set_data(self.data[floor(self.scroll.value) + self.count]))
             elif res < 0:
                 if self.app < self.scroll.value < len(self.data) - self.count - 1:
                     element = self.elements.pop()
                     self.elements.insert(0,
                                          element.set_data(self.data[floor(self.scroll.value) - 1]))
 
-    @in_this
     def mouse_flip(self, pos: pygame.Vector2):
         res = self.scroll.mouse_flip(pos)
         if not res:
             return
         if res > 0:
-            a = (self.scroll.value - 1) < (1 - self.app)
-            f = floor(res)
-            if self.scroll.value < len(self.data) - self.count:
+            a = ceil(self.scroll.value) == 1
+            f = ceil(floor(self.scroll.value) - self.scroll.value + res)
+            new = self.elements[
+                  :min(max(0, f - a), floor(len(self.data) - self.count - self.scroll.value))]
+            if new:
                 self.elements = self.elements[max(0, f - a):] + [
-                    self.elements[f - i].set_data(
-                        self.data[floor(self.scroll.value) + self.count - i + 1])
-                    for i in range(f - a, 0, -1)]
+                    new[i].set_data(self.data[floor(self.scroll.value) + self.count + i])
+                    for i in range(len(new))]
         elif res < 0:
             a = self.scroll.value - res > (len(self.data) - 1 + self.app) or self.scroll.value < (
                     1 - self.app)
@@ -811,27 +884,31 @@ class DataRecycleView(UIObject, Drawable):
         self.scroll.mouse_up()
 
     @check_visible
+    @zero_args
     def flip(self):
         self.draw_rect(self.color, self.rect)
         self.draw_rect(self.color // 2, self.data_rect)
-        self.scroll.flip(self.screen, pygame.Vector2())
         if not self.data:
             return
-        if self.scroll.value < 1 - self.app:
+        for el in self.elements:
+            el.flip()
+        if self.scroll.value < 1:
             plus = (1 - self.scroll.value) * self.view.rect.h
             self.screen.blit(self.elements[0].view, self.upgrade_coords(self.border, self.border),
                              pygame.Rect(0, self.view.rect.h - plus, self.view.rect.w, plus))
             ost = self.data_rect.h - plus - (self.count - 1) * self.view.rect.h
-            for i in range(1, min(self.count + bool(ost), len(self.data))):
+            for i in range(1, min(self.count + bool(ost) + 1, len(self.data))):
                 if i == self.count:
-                    self.screen.blit(self.elements[i].view, self.upgrade_coords(self.border,
-                                                                                self.border + plus + self.view.rect.h * (
-                                                                                        i - 1)),
+                    self.screen.blit(self.elements[i].view,
+                                     self.upgrade_coords(self.border,
+                                                         self.border + plus
+                                                         + self.view.rect.h * (i - 1)),
                                      pygame.Rect(0, 0, self.view.rect.w, ost))
                     continue
-                self.screen.blit(self.elements[i].view, self.upgrade_coords(self.border,
-                                                                            self.border + plus + self.view.rect.h * (
-                                                                                    i - 1)))
+                self.screen.blit(self.elements[i].view,
+                                 self.upgrade_coords(self.border,
+                                                     self.border + plus
+                                                     + self.view.rect.h * (i - 1)))
         elif self.scroll.value == (len(self.data) - 1):
             self.screen.blit(self.elements[-1].view, (self.border, self.border))
         elif self.scroll.value >= (len(self.data) - self.count + self.app):
@@ -868,6 +945,10 @@ class DataRecycleView(UIObject, Drawable):
                                  self.upgrade_coords(self.border,
                                                      self.border + plus + self.view.rect.h * (
                                                              i - 2)))
+        if self.scroll.maximum > self.scroll.length:
+            self.scroll.flip(self.screen, pygame.Vector2())
+        else:
+            self.draw_rect(self.color // 2, self.scroll.rect)
 
     def tick(self, delta):
         for i in self.elements.copy():
@@ -900,6 +981,9 @@ class DataLayout(UIObject, Drawable):
     def size(self, value):
         UIObject.size.fset(self, value)
         self.data_rect.w, self.data_rect.h = value[0] - self.border * 2, value[1] - self.border * 2
+        for i in self.elements:
+            if i.rect.w > self.data_rect.w:
+                i.size = self.data_rect.w, i.rect.h
         self.move_elements()
 
     def __iter__(self):
@@ -947,9 +1031,10 @@ class DataLayout(UIObject, Drawable):
                 n = el_w // (len(self.elements) + 1)
                 el_w = n
             for e in self.elements:
-                e.set_world_position(pygame.Vector2(self.border + el_w, self.border + (
-                    (self.data_rect.h - e.rect.h) if self.v_align == BOTTOM else (((
-                                                                                           self.data_rect.h - e.rect.h) // 2) if self.v_align == CENTER else 0))) + self.world_position)
+                move = pygame.Vector2(self.border + el_w, self.border + (
+                    (self.data_rect.h - e.rect.h) if self.v_align == BOTTOM else (
+                        ((self.data_rect.h - e.rect.h) // 2) if self.v_align == CENTER else 0)))
+                e.set_world_position(move + self.world_position)
                 el_w += e.rect.w + n
 
     @click_in
@@ -960,6 +1045,19 @@ class DataLayout(UIObject, Drawable):
             if r2:
                 r = r2
         return r
+
+    @click_in
+    def mouse_flip(self, pos: pygame.Vector2):
+        for el in self.elements:
+            el.mouse_flip(pos)
+
+    def check_pressed(self, pressed):
+        for el in self.elements:
+            el.check_pressed(pressed)
+
+    def mouse_up(self):
+        for el in self.elements:
+            el.mouse_up()
 
     def k_down(self, event):
         for el in self.elements:
@@ -995,14 +1093,16 @@ class DataLayout(UIObject, Drawable):
 
 class Toast(UIObject, Drawable):
 
-    def __init__(self, screen, text, time=1000, title=None, pos=pygame.Vector2(), width=0, height=0,
+    def __init__(self, screen, text, time=1, title=None, pos=pygame.Vector2(), width=0, height=0,
                  border=5, align=None, color=BASE_COLOR):
         super().__init__(pos, width, height)
         self._screen = screen
         self.align = align
         self.border = border
         self.color = color
-        if self.align == CENTER:
+        if not self.screen:
+            pass
+        elif self.align == CENTER:
             self.world_position = pygame.Vector2(self.screen.get_rect().center) - pygame.Vector2(
                 self.rect.centerx)
         elif self.align == TOP_LEFT:
@@ -1089,9 +1189,6 @@ class Toast(UIObject, Drawable):
     @update_pos
     def set_world_position(self, pos):
         pass
-        # super().set_world_position(pos)
-        # self.inner_rect.x, self.inner_rect.y = self.border + pos.x, self.rect.h * 0.2 + pos.y
-        # self.headline_rect.x, self.headline_rect.y = self.border + pos.x, pos.y
 
     @check_visible
     @on_alive
@@ -1115,24 +1212,48 @@ class Dialog(Toast):
 
     def __init__(self, screen, text, buttons=12, title=None, pos=pygame.Vector2(), width=0,
                  height=0,
-                 border=5, align=None):
+                 border=5, align=None, color=BASE_COLOR):
         super().__init__(screen, text, time=0, title=title, pos=pos, width=width, height=height,
-                         border=border, align=align)
+                         border=border, align=align, color=color)
         self.color = BASE_COLOR
         self.buttons = DataLayout(screen, self.inner_rect.w, self.inner_rect.h * 0.1,
                                   pygame.Vector2(self.border,
-                                                 self.border + self.inner_rect.h * 0.9) + self.world_position,
+                                                 self.border
+                                                 + self.inner_rect.h * 0.9) + self.world_position,
                                   base_color=TRANSPARENT(), v_align=CENTER, h_align=BETWEEN,
                                   orientation=HORIZONTAL)
         self.res = None
-        btns = {12: "OK", 4: "Yes", 2: "No", 1: "Cancel"}
+        self.action = None
+        btns = {OK_BUTTON: "OK", YES_BUTTON: "Yes", NO_BUTTON: "No", CANCEL_BUTTON: "Cancel"}
         for i in (12, 4, 2, 1):
             if buttons >= i:
                 buttons -= i
-                c = i
-                self.buttons.add_element(
-                    Button(screen).set_action(lambda: self.close(c)).set_background(
-                        ptext.getsurf(btns[i])))
+                if i == 12:
+                    self.buttons.add_element(
+                        Button(screen).set_action(lambda: self.close(OK_BUTTON)).set_background(
+                            Text(self.screen, btns[i])))
+                elif i == 4:
+                    self.buttons.add_element(
+                        Button(screen).set_action(lambda: self.close(YES_BUTTON)).set_background(
+                            Text(self.screen, btns[i])))
+                elif i == 2:
+                    self.buttons.add_element(
+                        Button(screen).set_action(lambda: self.close(NO_BUTTON)).set_background(
+                            Text(self.screen, btns[i])))
+                elif i == 1:
+                    self.buttons.add_element(
+                        Button(screen).set_action(lambda: self.close(CANCEL_BUTTON)).set_background(
+                            Text(self.screen, btns[i])))
+
+    @property
+    def screen(self):
+        return Toast.screen.fget(self)
+
+    @screen.setter
+    def screen(self, value):
+        Toast.screen.fset(self, value)
+        for button in self.buttons:
+            button.background.screen = value
 
     @click_in
     def get_click(self, pos: pygame.Vector2):
@@ -1140,6 +1261,8 @@ class Dialog(Toast):
 
     def close(self, btn):
         self.res = btn
+        if self.action:
+            self.action(self.res)
         self.alive = False
 
     def tick(self, delta):
@@ -1156,11 +1279,13 @@ class Dialog(Toast):
         self.buttons.flip()
 
 
-class Image(UIObject, Drawable):
+class Image(UIObject, Drawable, Game.Animation):
 
     def __init__(self, screen: pygame.Surface, img: pygame.Surface, pos=pygame.Vector2(), border=0,
                  border_color=BASE_COLOR):
-        super().__init__(pos, img.get_width() + border * 2, img.get_height() + border * 2)
+        UIObject.__init__(self, pos, img.get_width() + border * 2, img.get_height() + border * 2)
+        Game.Animation.__init__(self)
+        self.rotation = 0
         self.screen = screen
         self.img = img
         self.border = border
@@ -1173,8 +1298,41 @@ class Image(UIObject, Drawable):
     @check_visible
     @zero_args
     def flip(self):
-        self.draw_rect(self.border_color, self.rect)
-        self.screen.blit(self.img, self.rect.move(self.border, self.border))
+        new = pygame.Surface(self.rect.size)
+        self.draw_rect(self.border_color, self.rect, surface=new)
+        self.screen.blit(new, self.rect.topleft)
+        self.screen.blit(pygame.transform.rotate(self.img, self.rotation),
+                         self.rect.move(self.border, self.border))
+
+    def tick(self, delta):
+        Game.Animation.tick(self, delta)
+
+    def set_alpha(self, value):
+        self.img.set_alpha(value)
+
+
+class AnimatedImage(Image):
+
+    def __init__(self, screen: pygame.Surface, frames, tbs=0.05, pos=pygame.Vector2(), border=0,
+                 border_color=BASE_COLOR):
+        self.frames = frames
+        self.cur_frame = 0
+        self.tbs = tbs
+        super().__init__(screen, self.frames[self.cur_frame], pos, border, border_color)
+        self.alpha = 0
+
+    def tick(self, delta):
+        super().tick(delta)
+        self.alpha += delta / self.tbs
+        # print()
+        if self.alpha > 1:
+            self.alpha -= 1
+            self.cur_frame = (self.cur_frame + 1) % len(self.frames)
+            self.img = self.frames[self.cur_frame]
+
+    def set_alpha(self, value):
+        for frame in self.frames:
+            frame.set_alpha(value)
 
 
 class Text(UIObject, Drawable):
@@ -1184,9 +1342,12 @@ class Text(UIObject, Drawable):
                  text_color=pygame.Color("white")):
         self._text = text
         self.fontsize = fsize
-        self.text_surf = ptext.getsurf(text, fontsize=fsize, underline=underline, color=text_color)
-        super().__init__(pos, self.text_surf.get_width() + border * 2,
-                         self.text_surf.get_height() + border * 2)
+        self.text_surfs = [ptext.getsurf(text, fontsize=fsize, underline=underline,
+                                         color=pygame.Color("gray")),
+                           ptext.getsurf(text, fontsize=fsize, underline=underline,
+                                         color=text_color)]
+        super().__init__(pos, self.text_surfs[0].get_width() + border * 2,
+                         self.text_surfs[0].get_height() + border * 2)
         self.screen = screen
         self.border = border
         self.border_color = border_color
@@ -1204,11 +1365,13 @@ class Text(UIObject, Drawable):
     @text.setter
     def text(self, value):
         self._text = value
-        self.text_surf = ptext.getsurf(value, fontsize=self.fontsize, underline=self.underline,
-                                       color=self.text_color)
+        self.text_surfs = [ptext.getsurf(value, fontsize=self.fontsize, underline=self.underline,
+                                         color=pygame.Color("gray")),
+                           ptext.getsurf(value, fontsize=self.fontsize, underline=self.underline,
+                                         color=self.text_color)]
         self.size = (
-            self.text_surf.get_width() + self.border * 2,
-            self.text_surf.get_height() + self.border * 2)
+            self.text_surfs[0].get_width() + self.border * 2,
+            self.text_surfs[0].get_height() + self.border * 2)
 
     @property
     def underline(self):
@@ -1217,8 +1380,10 @@ class Text(UIObject, Drawable):
     @underline.setter
     def underline(self, value):
         self._underline = value
-        self.text_surf = ptext.getsurf(self.text, fontsize=self.fontsize, underline=self.underline,
-                                       color=self.text_color)
+        self.text_surfs = [ptext.getsurf(self.text, fontsize=self.fontsize, underline=value,
+                                         color=pygame.Color("gray")),
+                           ptext.getsurf(self.text, fontsize=self.fontsize, underline=value,
+                                         color=self.text_color)]
 
     @property
     def text_color(self):
@@ -1227,8 +1392,9 @@ class Text(UIObject, Drawable):
     @text_color.setter
     def text_color(self, value):
         self._text_color = value
-        self.text_surf = ptext.getsurf(self.text, fontsize=self.fontsize, underline=self.underline,
-                                       color=value)
+        self.text_surfs[0] = ptext.getsurf(self.text, fontsize=self.fontsize,
+                                           underline=self.underline,
+                                           color=value)
 
     @check_visible
     @zero_args
@@ -1236,7 +1402,7 @@ class Text(UIObject, Drawable):
         if self.border:
             self.draw_rect(self.border_color, self.rect, self.border)
         self.draw_rect(self.color, self.rect)
-        self.screen.blit(self.text_surf, self.rect.move(self.border, self.border))
+        self.screen.blit(self.text_surfs[self.active], self.rect.move(self.border, self.border))
 
 
 class InputField(UIObject, Drawable):
@@ -1268,12 +1434,17 @@ class InputField(UIObject, Drawable):
     def border(self, value):
         self._border = value
         self.text_surf = pygame.Surface(
-            (self.rect.w - value * 2 - 10, self.rect.h - value * 2 - 10))
+            (self.rect.w - value * 2, self.rect.h - value * 2))
 
-    def set_size(self, width, height):
-        super().set_size(width, height)
+    @property
+    def size(self):
+        return UIObject.size.fget(self)
+
+    @size.setter
+    def size(self, value):
+        UIObject.size.fset(self, value)
         self.text_surf = pygame.Surface(
-            (self.rect.w - self.border * 2 - 10, self.rect.h - self.border * 2 - 10))
+            (self.rect.w - self.border * 2, self.rect.h - self.border * 2))
 
     @check_visible
     @zero_args
@@ -1309,6 +1480,10 @@ class InputField(UIObject, Drawable):
             elif len(self._text) < self.limit:
                 self._text += event.unicode
 
+    def clear(self):
+        self.text = ""
+        self.active = False
+
 
 class MultiLineField(InputField):
 
@@ -1338,9 +1513,6 @@ class MultiLineField(InputField):
                    pos=(0, 0), surf=self.text_surf, align="center",
                    width=self.text_surf.get_width())
         if self.active:
-            # ptext.drawbox(,
-            #               (t_pos[0] + t_surf.get_width(), 0, 10, self.text_surf.get_height()),
-            #               surf=self.text_surf)
             self.was = (self.was + 1) % FPS
         self.screen.blit(self.text_surf, self.world_position + [self.border, self.border])
 
@@ -1358,7 +1530,8 @@ class Form(UIObject, Drawable):
                                                    height - border * 2)
         self.btns: DataLayout = DataLayout(screen, self.inner_rect.w, self.inner_rect.h * 0.1,
                                            pos=pos + [border,
-                                                      border + self.inner_rect.h * 0.9 + 50 * self.n_error],
+                                                      border + self.inner_rect.h * 0.9
+                                                      + 50 * self.n_error],
                                            orientation=HORIZONTAL, v_align=CENTER, h_align=BETWEEN,
                                            border=0)
         self.btns_pos = btns_pos
@@ -1400,7 +1573,8 @@ class Form(UIObject, Drawable):
             if self.n_error:
                 self.error = Text(screen, "", text_color=pygame.Color("red"), fsize=24,
                                   pos=pygame.Vector2(pos + [border,
-                                                            border + self.inner_rect.h * 0.9 - self.btns.rect.h - 50 * self.n_error]))
+                                                            border + self.inner_rect.h * 0.9 -
+                                                            self.btns.rect.h - 50 * self.n_error]))
         self.fields: DataLayout = DataLayout(screen, *self.elements_rect.size,
                                              pos=pygame.Vector2(self.elements_rect.x,
                                                                 self.elements_rect.y),
@@ -1416,7 +1590,8 @@ class Form(UIObject, Drawable):
         if btn.width > self.btns.data_rect.w:
             if self.btns_pos == LEFT:
                 self.elements_rect.w = self.inner_rect.w - btn.width - self.btns.border * 2 - 20
-                self.elements_rect.x = btn.width + self.border + self.btns.border + self.world_position.x + 20
+                self.elements_rect.x = btn.width + self.border + self.btns.border\
+                                       + self.world_position.x + 20
                 self.fields.size = self.elements_rect.size
                 self.fields.set_world_position(self.elements_rect.x, self.elements_rect.y)
                 self.btns.size = btn.width + self.btns.border * 2 + 20, self.btns.height
@@ -1424,7 +1599,8 @@ class Form(UIObject, Drawable):
                 self.elements_rect.w = self.inner_rect.w - btn.width - self.btns.border * 2 - 20
                 self.fields.size = self.elements_rect.size
                 self.btns.size = btn.width + self.btns.border * 2, self.btns.height
-                self.btns.set_world_position(self.elements_rect.x + self.elements_rect.w - 40, self.btns.world_position.y)
+                self.btns.set_world_position(self.elements_rect.x + self.elements_rect.w - 40,
+                                             self.btns.world_position.y)
         self.btns.add_element(btn)
 
     @property
@@ -1498,7 +1674,8 @@ class Form(UIObject, Drawable):
         elif self.btns_pos == RIGHT:
             self.btns.size = self.inner_rect.w * 0.2, self.inner_rect.h
             self.elements_rect = pygame.Rect(*(self.pos + [self.border, self.border]),
-                                             self.inner_rect.w * 0.8, self.inner_rect.h - 50 * self.n_error)
+                                             self.inner_rect.w * 0.8,
+                                             self.inner_rect.h - 50 * self.n_error)
         elif self.btns_pos == BOTTOM:
             self.btns.size = self.inner_rect.w, self.inner_rect.h * 0.1
             self.elements_rect.size = self.inner_rect.w, self.inner_rect.h * 0.9 - 50 * self.n_error
@@ -1558,6 +1735,12 @@ class Form(UIObject, Drawable):
         if self.n_error:
             self.error.tick(delta)
 
+    def clear(self):
+        self.error.text = ""
+        for field in self.fields:
+            if isinstance(field, InputField):
+                field.clear()
+
 
 class Frame(Form):
 
@@ -1568,12 +1751,6 @@ class Frame(Form):
         self.name_field = None
         self.add_field = None
         self.current = None
-        # self.error = None
-        # if btns_pos == TOP:
-        #     self.btns.set_world_position(pos + [border, border])
-        # else:
-        #     self.elements_rect.h = self.inner_rect.h * 0.9
-        #     self.btns.world_position.x = border + self.inner_rect.h
 
     @property
     def size(self):
@@ -1583,7 +1760,7 @@ class Frame(Form):
     def size(self, value):
         Form.size.fset(self, value)
         for i in self._fields.values():
-            i.size = self.inner_rect.size
+            i.size = self.elements_rect.size
 
     @property
     def result(self):
@@ -1605,8 +1782,9 @@ class Frame(Form):
         UIObject.set_world_position(self, pos)
         if self.btns_pos == TOP:
             self.btns.set_world_position(pos + [self.border] * 2)
-            self.elements_rect.x, self.elements_rect.y = self.world_position + [self.border,
-                                                                                self.border + self.btns.rect.h]
+            self.elements_rect.x, self.elements_rect.y = self.world_position\
+                                                         + [self.border,
+                                                            self.border + self.btns.rect.h]
         elif self.btns_pos == LEFT:
             self.btns.set_world_position(pos + [self.border] * 2)
             self.elements_rect.x, self.elements_rect.y = pos + [self.border + self.btns.rect.w,
@@ -1650,8 +1828,29 @@ class Frame(Form):
                     b.background.underline = False
                 t.underline = True
 
-        self.btns.add_element(
-            Button(self.screen).set_background(t).set_action(set))
+        btn = Button(self.screen).set_background(t).set_action(set)
+        self.add_btn(btn)
+        return btn
+
+    def add_btn(self, btn):
+        if btn.width > self.btns.data_rect.w:
+            if self.btns_pos == LEFT:
+                self.elements_rect.w = self.inner_rect.w - btn.width - self.btns.border * 2 - 20
+                self.elements_rect.x = btn.width + self.border + self.btns.border\
+                                       + self.world_position.x + 20
+                for i in self._fields.values():
+                    i.size = self.elements_rect.size
+                    i.set_world_position(self.elements_rect.x, self.elements_rect.y)
+                self.btns.size = btn.width + self.btns.border * 2 + 20, self.btns.height
+            elif self.btns_pos == RIGHT:
+                self.elements_rect.w = self.inner_rect.w - btn.width - self.btns.border * 2 - 20
+                for i in self._fields.values():
+                    i.size = self.elements_rect.size
+                    i.set_world_position(self.elements_rect.x, self.elements_rect.y)
+                self.btns.size = btn.width + self.btns.border * 2, self.btns.height
+                self.btns.set_world_position(self.elements_rect.x + self.elements_rect.w - 40,
+                                             self.btns.world_position.y)
+        self.btns.add_element(btn)
 
     def remove(self, name):
         keys = self._fields.keys()
@@ -1668,7 +1867,9 @@ class Frame(Form):
     def flip(self):
         self.draw_rect(self.color, self.rect)
         self.draw_rect(self.color // 2, self.inner_rect)
-        self.fields.flip()
+        f = self.fields
+        if f:
+            f.flip()
         self.btns.flip()
 
     def tick(self, delta):
@@ -1712,7 +1913,7 @@ class ScreensSystem:
         self.screens = {}
         self.current = None
         self.overlay = Screen(surface.get_size())
-        self.overlay.surface = surface
+        # self.overlay.surface = surface
 
     def add_screen(self, name, screen):
         self.screens[name] = screen
@@ -1730,10 +1931,15 @@ class ScreensSystem:
 
     def flip(self):
         if self.current:
+            self.screens[self.current].surface.fill((0, 0, 0))
             self.screens[self.current].flip()
+            if pygame.mouse.get_focused():
+                self.mouse_flip(pygame.Vector2(pygame.mouse.get_pos()))
             self.main_surface.blit(self.screens[self.current].surface, (0, 0))
+        self.overlay.surface.fill(0)
         self.overlay.flip()
         self.main_surface.blit(self.overlay.surface, (0, 0))
+        # self.main_surface.blit(self.overlay.surface, (0, 0))
 
     def get_click(self, pos):
         if not self.overlay.get_click(pos):
@@ -1759,12 +1965,17 @@ class ScreensSystem:
         self.overlay.k_down(event)
         return self.screens[self.current].k_down(event)
 
+    @property
+    def screen(self) -> Screen:
+        return self.screens[self.current]
+
 
 class Screen:
 
     def __init__(self, size):
         self.elements = []
-        self.surface = pygame.Surface(size)
+        self.surface = pygame.Surface(size, pygame.SRCALPHA)
+        self.surface = self.surface.convert_alpha()
         self.visible = True
         self.alive = True
 
@@ -1832,3 +2043,46 @@ class Screen:
                 self.elements.remove(i)
             else:
                 i[0].tick(delta)
+
+
+class Camera(UIObject):
+
+    def __init__(self, pos=pygame.Vector2(), width=0, height=0, box=None):
+        super().__init__(pos, width, height)
+        self.target: Game.PositionTarget = None
+        self.box: pygame.Rect = box
+
+    def focus(self, pos: pygame.Vector2):
+        self.target = Game.PositionTarget(pygame.Vector2(self.rect.topleft), pygame.Vector2(*pos),
+                                          50)
+
+    def tick(self, delta: int):
+        if self.target:
+            self.set_world_position(self.target.tick(delta))
+
+    def move(self, value: pygame.Vector2):
+        if self.target:
+            self.target = None
+        if self.box:
+            value.x -= min(0, self.rect.x + value.x - self.box.right[0])
+            value.y -= min(0, self.rect.y + value.y - self.box.right[1])
+            value.x += max(0, -self.rect.x - value.x + self.box.right[0])
+            value.y += max(0, -self.rect.y - value.y + self.box.right[1])
+        self.rect = self.rect.move(*value)
+
+
+class MapUI(UIObject):
+
+    def __init__(self, screen: pygame.Surface, pos=pygame.Vector2(), width=0, height=0):
+        super().__init__(pos, width * STANDARD_WIDTH, height * STANDARD_HEIGHT)
+        self.screen: pygame.Surface = screen
+        self.camera = Camera(pygame.Vector2(), *self.screen.get_size(),
+                             self.rect.move(*(pos + [-self.width // 2, -self.height // 2])))
+
+    @property
+    def size(self):
+        return self.rect.w // STANDARD_WIDTH, self.rect.h // STANDARD_HEIGHT
+
+    @size.setter
+    def size(self, value):
+        UIObject.size.fset(value[0] * STANDARD_WIDTH, value[1] * STANDARD_HEIGHT)

@@ -5,6 +5,7 @@ import pygame
 
 LEFT_CLICK = 1
 RIGHT_CLICK = 2
+STANDARD = 3
 # -------------
 
 # Hex types
@@ -28,6 +29,8 @@ CASTLE = 1031
 STORAGE = 1032
 ROAD = 1033
 CANTEEN = 1034
+BARRACKS = 1035
+TOWER = 1036
 PROJECT = 1039
 # -------------
 
@@ -44,6 +47,7 @@ MINE = 1042
 # Resource
 WOOD = 1043
 ROCK = 1044
+MEN = 1045
 # -------------
 
 # Game Actions
@@ -106,6 +110,7 @@ GAME_STARTED = 40019
 GAME_FINISHED = 40020
 USER_NOT_IN_GAME = 40021
 SERVER_DONT_WORK = 40022
+YOU_IN_SESSION = 40023
 # -------------
 
 # Status
@@ -122,7 +127,19 @@ NO_BUTTON = 2  # 10
 CANCEL_BUTTON = 1  # 1
 # -------------
 
+# Server constants
+S_PENDING = 4
+STARTED = 6
+FINISHED = 7
+# ------------
+
+# Pages
+MAIN = 1000000
+
+# -----------
+
 # Specials
+GHOST = 77777
 
 
 class TRANSPARENT:
@@ -147,6 +164,8 @@ class TRANSPARENT:
 
     def __floordiv__(self, other):
         return self
+
+
 # -------------
 
 # Game presets
@@ -155,9 +174,13 @@ PADDING = 10
 RATE = 1 / FPS
 STANDARD_WIDTH = 64
 STANDARD_HEIGHT = 48
-RESOURCES_FOR_BUILD = {STORAGE: (10, 0, 10), ROAD: (0, 5, 3), CANTEEN: (10, 0, 10)}
+START_WOOD = START_ROCKS = 5
+RESOURCES_FOR_BUILD = {CANTEEN: (3, 0, 10), BARRACKS: (6, 3, 10), TOWER: (5, 5, 10)}
 MANS_FOR_DESTROY = {STORAGE: 5, ROAD: 1}
 MANS_FOR_ATTACK = {STORAGE: 8}
+ATTACK_RATES = {TOWER: 1, CASTLE: 1}
+ATTACK_RANGES = {TOWER: 128, CASTLE: 128}
+
 IMAGES_PATH = "./images"
 SPRITES_PATHS = {k: os.path.join(IMAGES_PATH, v) for k, v in
                  {
@@ -165,27 +188,39 @@ SPRITES_PATHS = {k: os.path.join(IMAGES_PATH, v) for k, v in
                      WATER: "earth/water.png",
                      CASTLE: "building/castle.png",
                      FOREST: "resource/forest.png",
-                     STORAGE: "building/storage.png",
-                     MENU_BACKGROUND: "menu_icon/menu.png",
+                     MINE: "resource/mine.png",
+                     # STORAGE: "building/storage.png",
                      WOOD: "resource/wood.png",
+                     ROCK: "resource/rocks.png",
+                     MEN: "resource/men.png",
                      PROJECT: "building/project.png",
                      CANTEEN: "building/canteen.png",
-                     DELETE_PATH: "menu_icon/minus.png",
-                     MAKE_PATH: "menu_icon/plus.png",
-                     DESTROY: "menu_icon/destroy.png",
-                     BUILD: "menu_icon/menu_build.png",
-                     BACKWARD: "menu_icon/menu_backward.png",
-                     ACCEPT: "menu_icon/accept.png",
-                     CANCEL: "menu_icon/cancel.png",
+                     BARRACKS: "building/barracks.png",
+                     TOWER: "building/tower.png",
                  }.items()
                  }
 MENU_PATHS = {k: os.path.join(IMAGES_PATH, v) for k, v in
               {
                   ROAD: "building/road.png",
-                  CANTEEN: "building/canteen.png",
-                  STORAGE: "building/castle.png",
+                  CANTEEN: "menu_icon/canteen.png",
+                  STORAGE: "menu_icon/castle.png",
+                  BARRACKS: "menu_icon/barracks.png",
+                  TOWER: "menu_icon/tower.png",
+                  DELETE_PATH: "menu_icon/minus.png",
+                  MENU_BACKGROUND: "menu_icon/menu.png",
+                  MAKE_PATH: "menu_icon/plus.png",
+                  DESTROY: "menu_icon/destroy.png",
+                  BUILD: "menu_icon/menu_build.png",
+                  BACKWARD: "menu_icon/menu_backward.png",
+                  ACCEPT: "menu_icon/accept.png",
+                  CANCEL: "menu_icon/cancel.png",
               }.items()
               }
+BACKGROUNDS = {k: os.path.join(IMAGES_PATH, v) for k, v in
+               {
+                   MAIN: "backgrounds/background.jpg",
+               }.items()
+               }
 PLAYER_COLORS = {
     1: (255, 0, 0),
     2: (0, 255, 0),
@@ -195,15 +230,57 @@ TRADE = {FOREST: 10,
          MINE: 10}
 
 # Font sizes
-STANDARD_FONT = 22
+STANDARD_FONT = 16
 STATUSBAR_FONT = 22
 
 # Hex Tips
-tips = {CANTEEN: {"title": "Canteen",
-                  "text": "When man run nearby he restore his hungry parameter"}}
+tips = {CANTEEN: {"title": "Столовая Зины",
+                  "text": "Когда мужики летят меситься рядом с этой чудной столовой кухарки Зины"
+                          " им хватает аромата, чтобы восполнить параметры голода."
+                          "\n(3 Полена, 0 Камней, 10 Мужиков)"},
+        TOWER: {"title": "Башня Анатолия",
+                "text": "Анатолий еще в детстве, живя близ Чернобыля, наблюдал, как за окном ничком"
+                        " падают птицы. Мы заметили этот талант, поэтому теперь Анатолий сверлит"
+                        " взглядом ваших мужиков, а от проживания в Чернобыле у него осталась лишь"
+                        " способность к телепортации."
+                        "\n(5 Полен, 5 Камней, 10 Мужиков)"},
+        BARRACKS: {"title": "Казармы",
+                   "text": "Именно здесь на свет появляются настоящие мужчины"
+                           "\n(6 Поленьев, 3 Камня, 10 Мужиков)"},
+        DELETE_PATH: {"title": "Ножнички",
+                      "text": "Ой-ёй-ёй, каких дорог вы напряли, разобраться в них? Да сам черт"
+                              " ногу сломит. Предлагаю все удалить."},
+        MAKE_PATH: {"title": "Настройка пути",
+                    "text": "Пора проложить путь для ваших верных мужиков, ведь хоть они"
+                            " первосортные подхалимы и каблуки, без вашей указки действовать"
+                            " они бояться. (Ctrl + Click удалить участок пути)"},
+        BUILD: {"title": "Возведение",
+                "text": "Вашей империи пора расширяться. Захватите весь мир, выстройте свое имя"
+                        " из зданий (в этом, кстати, поможет кнопочка Shift, если у вас"
+                        " хватает ресурсов), а если вы промахнулись, то сможете забрать свои"
+                        " ресурсы обратно, если мужики не успели добраться и все растащить"
+                        " до вас."},
+        DESTROY: {"title": "Кто это здесь оставил?",
+                  "text": "Кажется, что на вашем поле кто-то творит бесовщину и пора бы это"
+                          " исправить? Пару щелчков пальцами и та-дам все исправлено."
+                          "Ой, или это были ваши строения?"},
+        ROCK: {"title": "Камушки",
+               "text": "Помните, эти камни добыты потом и кровью, а не подобраны с римских дорог,"
+                       " так что тратьте их аккуратно, если найдете как."},
+        WOOD: {"title": "Поленья",
+               "text": "А вы думали, что мужики рубят лес? Если бы их кто-то научил, но вам повезло"
+                       ", что леса в этом районе волшебные, и бревна катяться прямо в руки"
+                       " мужикам, ну или не совсем..."},
+        MEN: {"title": "Мужики",
+              "text": "Каждому же хотелось посчитать сколько тараканов у него бегает на кухне?"
+                      "1, 2, 3... Ладно, ладно, мы уже посчитали."},
+        }
 
 # Colors
 BASE_COLOR = pygame.Vector3(63, 65, 67)
 
 # Hahahahahahahahahahahahahahahhahahahahahahahahahahahhahaahahahah. Realy?
-SERVER = "http://127.0.0.1:8081"
+# SERVER = "https://dag1-flask-app.herokuapp.com/"
+# SERVER = "http://127.0.0.1:5000"
+# SERVER = "http://5ac15b4c.ngrok.io"
+SERVER = "http://69be0ff0.ngrok.io"
