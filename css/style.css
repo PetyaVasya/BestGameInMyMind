@@ -1,0 +1,16 @@
+table td, h1, h2{
+    text-align: center;
+}
+.content{
+    flex: 1 0 auto;
+}
+html, body{
+    height: 100%;
+}
+body{
+    display: flex;
+    flex-direction: column;
+}
+.breadcrumb-nav{
+    margin-top: 70px;
+}
