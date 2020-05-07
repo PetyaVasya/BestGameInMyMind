@@ -97,13 +97,13 @@ class User(db.Model, UserMixin):
     def loose_sessions(self):
         return [s for s in self.sessions if s.winner != self and s.status == FINISHED]
 
-    @property
-    def is_authenticated(self):
-        return True
-
-    @property
-    def is_active(self):
-        return self.confirmed
+    # @property
+    # def is_authenticated(self):
+    #     return True
+    #
+    # @property
+    # def is_active(self):
+    #     return self.confirmed
 
     @hybrid_property
     def friends(self):

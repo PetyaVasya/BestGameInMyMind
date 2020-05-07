@@ -171,7 +171,8 @@ def error404(e):
 @app.route("/index")
 @register_breadcrumb(app, '.', 'Главная')
 def home():
-    return render_template("main/index.html")
+    return redirect(url_for("posts.index"))
+    # return render_template("main/index.html")
 
 
 @app.route("/rating")

@@ -6,6 +6,7 @@ import requests
 from flask import Blueprint, redirect, render_template, url_for, flash, jsonify, request, session
 from flask_breadcrumbs import register_breadcrumb, default_breadcrumb_root
 from flask_login import current_user, login_user, login_required, logout_user, LoginManager
+from oauthlib.oauth2 import InvalidGrantError
 from requests_oauthlib import OAuth2Session
 
 from .forms import LoginForm, RegistrationForm
@@ -162,14 +163,19 @@ def profile(name=""):
         sessions = user.sessions.filter(Session.status == FINISHED).paginate(page=page, per_page=10)
         return render_template("users/profile.html", title="Профиль: " + name,
                                user=user, sessions=sessions)
-    if current_user.token_info:
-        discord_s = make_session(token=json.loads(current_user.token_info))
-        user = discord_s.get(app.config["API_BASE_URL"] + '/users/@me').json()
-        if user.get('message') and user["message"] == "401: Unauthorized":
+    try:
+        if current_user.token_info:
+            discord_s = make_session(token=json.loads(current_user.token_info))
+            user = discord_s.get(app.config["API_BASE_URL"] + '/users/@me').json()
+            if user.get('message') and user["message"] == "401: Unauthorized":
+                user = {}
+                session["oauth2_token"] = None
+        else:
             user = {}
-            session["oauth2_token"] = None
-    else:
+    except InvalidGrantError:
+        current_user.token_info = None
         user = {}
+
     sessions = current_user.sessions.filter(Session.status == FINISHED).paginate(page=page,
                                                                                  per_page=10)
     return render_template("users/profile.html", title="Профиль", user=current_user,
