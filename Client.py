@@ -10,7 +10,7 @@ import asyncio
 import atexit
 import aiohttp
 from validate_email import validate_email
-from asgiref.sync import async_to_sync
+# from asgiref.sync import async_to_sync
 from collections import deque
 
 
