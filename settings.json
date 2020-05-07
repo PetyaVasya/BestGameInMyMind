@@ -28,12 +28,8 @@
               "value": "Получить ссылку на наш сайт"
             },
             {
-              "name": "!lobbies",
+              "name": "!sessions {page}",
               "value": "Получить открытые лобби"
-            },
-            {
-              "name": "!login",
-              "value": "Получить ссылку для привязки дискорда к аккаунту"
             },
             {
               "name": "!add_friend {@Mention|name}",

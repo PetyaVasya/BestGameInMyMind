@@ -190,7 +190,7 @@ class DiscordBot(commands.Cog):
         embed = discord.Embed()
         embed.title = "Наш сайт"
         embed.colour = discord.Colour.orange()
-        embed.set_footer(settings["api"])
+        embed.set_footer(text=settings["api"])
         await ctx.send(embed=embed)
 
     @commands.command(name="link")
@@ -221,8 +221,8 @@ class DiscordBot(commands.Cog):
         embed.add_field(name="Кол-во побед", value=cuser["wins"])
         await ctx.author.send(embed=embed)
 
-    @commands.command(name="user")
-    async def user(self, ctx: commands.Context, name: str):
+    @commands.command(name="player")
+    async def player(self, ctx: commands.Context, name: str):
         await ctx.message.delete(delay=300)
         embed = discord.Embed()
         embed.colour = discord.Colour.red()
@@ -239,8 +239,8 @@ class DiscordBot(commands.Cog):
             embed.set_footer(text="Извините, но данный пользователь не привязал свой дискорд")
         await ctx.author.send(embed=embed)
 
-    @commands.command(name="player")
-    async def player(self, ctx: commands.Context, user: UUserConverter):
+    @commands.command(name="user")
+    async def user(self, ctx: commands.Context, user: UUserConverter):
         await ctx.message.delete(delay=300)
         embed = discord.Embed()
         embed.colour = discord.Colour.dark_red()
@@ -280,9 +280,9 @@ class DiscordBot(commands.Cog):
             if not embed_data:
                 embed.set_footer(text=data[k]["footer"])
             for friend in embed_data:
-                embed.add_field(name=friend["name"] + (
-                    " | <@!{}>".format(friend["discord"]) if friend.get("discord") else ""),
-                                value="Онлайн" if friend["status"] else "Оффлайн")
+                embed.add_field(name=friend["name"],
+                                value=("Онлайн" if friend["status"] else "Оффлайн") + (
+                    " | <@!{}>".format(friend["discord"]) if friend.get("discord") else ""))
             await ctx.author.send(embed=embed)
 
     @commands.command(name="add_friend")
