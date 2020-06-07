@@ -402,7 +402,6 @@ class Path(list):
     def add_point(self, point):
         gmap = Game.ServerGame().sessions[self.sid].field.get_2d_map()
         for p in islice(self.points, 1, len(self.points)):
-            print(gmap[p[0] + 50][p[1] + 50], [p[0] + 50, p[1] + 50])
             if gmap[p[0] + 50][p[1] + 50]:
                 return
             else:

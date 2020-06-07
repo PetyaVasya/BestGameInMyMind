@@ -172,6 +172,8 @@ def tick(session: GameSession):
 class GameSession:
 
     def __init__(self, sid, players=2):
+        # Создание сессиии и потока под нее с указанием id, чтобы можно было определить, к какой
+        # сессии относится тот или иной объект
         self.field = None
         self.mode = ONLINE
         self.attributes = SessionAttributes()
@@ -205,43 +207,33 @@ class GameSession:
         self.check_win()
 
     def build(self, player, data):
-        print("b s")
         hexagon: Building = convert_hexagon(data)
         if UnitSpawn in hexagon.building.__class__.__bases__ or isinstance(
                 hexagon.building, UnitSpawn):
             self.web.register(hexagon.building)
             hexagon.building.alpha = 0.15
         hexagon.sid = self.sid
-        print("b f")
         if Building not in hexagon.__class__.__bases__:
-            print("b", 1)
             return False
         elif hexagon.player != player:
-            print("b", 2)
             return False
         elif hexagon.hexagon not in self.field.reachable:
-            print("b", 3)
             return False
         elif self.field.get_hexagon(*hexagon.hexagon).type == GRASS and self.resources.build(
                 hexagon.player, hexagon.building.building_type):
             self.field.set_hexagon(hexagon)
             hexagon.hp += 1
             return True
-        print("b", 4)
         return False
 
     def make_path(self, player, start, removed, added):
         hexagon: UnitSpawn = self.field.get_hexagon(*start)
         if UnitSpawn not in hexagon.__class__.__bases__ and not isinstance(hexagon, UnitSpawn):
-            print("p", 1)
             return False
         elif hexagon.player != player:
-            print("p", 2)
             return False
         elif (len(hexagon.path.points) - 1) < removed:
-            print("p", 3)
             return False
-        print(hexagon.path.points)
         last = len(added) - 1
         points = []
         sliced = list(islice(hexagon.path.points, 0, len(hexagon.path.points) - removed))
@@ -251,30 +243,24 @@ class GameSession:
             if not any(map(lambda x: (point[0] + x[0], point[1] + x[1]) == last_p,
                            ((-2, 0), (-1, -1), (1, -1), (2, 0), (1, 1),
                             (-1, 1)))):
-                print("p", 8)
                 return False
             else:
                 last_p = point
             if point not in self.field.reachable:
-                print("p", 4)
                 return False
             phexagon = self.field.get_hexagon(*point)
             if ind != last:
                 if phexagon.type != GRASS:
-                    print("p", 5)
                     return False
             points.append(point)
         if not points and (removed == (len(hexagon.path.points) - 1)):
-            print("delete path")
             hexagon.path = Path(deque([start]), hexagon.player)
             return True
         res_points = sliced + points
         linestring = LineString(res_points)
         if not linestring.is_simple:
-            print("p", 6)
             return False
         elif not self.field.water.intersection(linestring).is_empty:
-            print("p", 7)
             return False
         hexagon.path = Path(deque(res_points), hexagon.player)
         return True
@@ -282,13 +268,10 @@ class GameSession:
     def destroy(self, player, hexagon):
         hexagon: Building = self.field.get_hexagon(*hexagon)
         if Building not in hexagon.__class__.__bases__:
-            print("d", 1)
             return False
         elif hexagon.player != player:
-            print("d", 2)
             return False
         elif isinstance(hexagon, Castle):
-            print("d", 3)
             return False
         if isinstance(hexagon, Project) and hexagon.hp.is_empty():
             res = RESOURCES_FOR_BUILD[hexagon.building.building_type]
@@ -350,6 +333,7 @@ class Field:
                                            GRASS if -50 <= x <= 50 and -50 <= y <= 50 else WATER))
 
     def generate_map(self, seed, extra=None, players=2):
+        # Генерация игрового поля на основе seed'а и шумов Перлина
         if extra is None:
             extra = {"hexagons": []}
         gen = OpenSimplex(seed)
@@ -475,7 +459,6 @@ class Field:
         for player, castle in enumerate(random.sample(
                 list(filter(lambda x: (x["x"], x["y"]) in self.reachable, real_castles)), players),
                 1):
-            print("CAstle", castle["x"], castle["y"])
             castle["player"] = player
             new_extra["hexagons"].append(castle)
         self.convert_map(new_extra)

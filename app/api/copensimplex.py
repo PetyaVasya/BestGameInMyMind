@@ -96,11 +96,8 @@ class OpenSimplex(object):
         perm_grad_index_3D = self._perm_grad_index_3D = [0] * 256
         source = [i for i in range(0, 256)]
         seed = overflow(seed * 6364136223846793005 + 1442695040888963407)
-        print(seed)
         seed = overflow(seed * 6364136223846793005 + 1442695040888963407)
-        print(seed)
         seed = overflow(seed * 6364136223846793005 + 1442695040888963407)
-        print(seed)
         for i in range(255, -1, -1):
             seed = overflow(seed * 6364136223846793005 + 1442695040888963407)
             r = int((seed + 31) % (i + 1))

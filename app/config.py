@@ -5,8 +5,11 @@ basedir = os.path.abspath(os.path.dirname(__file__))
 
 
 class Config(object):
+    db_path = os.path.join(basedir, 'db')
+    if not os.path.exists(db_path):
+        os.makedirs(db_path)
     SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
-                              'sqlite:///' + os.path.join(basedir, 'db/app.db')
+                              'sqlite:///' + db_path + "/app.db"
     OAUTH2_CLIENT_ID = os.environ.get('OAUTH2_CLIENT_ID', "702101622762766347")
     OAUTH2_CLIENT_SECRET = os.environ.get('OAUTH2_CLIENT_SECRET',
                                           "72_eMJRHIvjFttxCdRC2hPXSY_spKGTY")

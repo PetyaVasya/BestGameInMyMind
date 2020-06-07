@@ -10,7 +10,7 @@ from flask_httpauth import HTTPBasicAuth
 
 from app.api import Game
 from app.app import db, datetime, app, OrderedDict
-from app.constants import FINISHED, STARTED, PENDING
+from app.constants import FINISHED, STARTED, PENDING, DEFAULT_IN_SESSION
 from app.email import send_email_async
 from app.models import User, Session, SessionLogs, Post, Tag
 from app.token import generate_confirmation_token
@@ -203,7 +203,7 @@ def create_session():
     elif sessions and sessions[0].status == PENDING:
         return "You in session", 400
     s = Session(name=request.form["name"], host_id=g.user.id, desc=request.form["desc"],
-                user_limit=2)
+                user_limit=DEFAULT_IN_SESSION)
     s.users.append(g.user)
     db.session.add(s)
     db.session.commit()
@@ -251,7 +251,6 @@ def disconnect():
     if sessions:
         s = sessions[0]
         if s.status == FINISHED:
-            print("aaaa?")
             return "Session is finished", 400
         elif s.status == PENDING:
             s.users.remove(g.user)
@@ -287,7 +286,6 @@ def disconnect():
             db.session.commit()
             return ""
     else:
-        print("wtf")
         return "User not in game", 400
 
 
@@ -437,19 +435,14 @@ def check_action(u, s, action, param):
         if us == u:
             player = ind
             break
-    print(action, param, player)
     if player == -1:
-        print("WTF")
         return False
     if action == "BUILD":
-        print("build")
         return game.sessions[s.id].build(player, param)
     elif action == "MAKE_PATH":
-        print("make path")
         return game.sessions[s.id].make_path(player, param["path"], param["removed"],
                                              param["added"])
     elif action == "DESTROY":
-        print("destroy")
         return game.sessions[s.id].destroy(player, param["hexagon"])
     return False
 
@@ -478,7 +471,6 @@ def execute_action(id, action):
                 if us == g.user:
                     player = ind
                     break
-            print("ERROR")
             game = Game.ServerGame()
             return jsonify({"wood": game.sessions[s.id].resources[player].wood,
                             "rocks": game.sessions[s.id].resources[player].rocks}), 400

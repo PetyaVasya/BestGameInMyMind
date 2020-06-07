@@ -148,6 +148,8 @@ class User(db.Model, UserMixin):
 
     @is_friends.expression
     def is_friends(cls, user):
+        # Четыре часа на эти 5 строк, бесполезнейшая тема,
+        # а всего лишь позволяет использовать свои параметры в функции filter
         left = relationship.alias("a")
         right = relationship.alias("b")
         l_r = left.join(right, (left.c.requesting_user_id == right.c.receiving_user_id) & (
