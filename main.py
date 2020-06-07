@@ -540,33 +540,41 @@ def main():
     screen_system.add_screen("game", game_screen)
     screen_system.add_screen("loading", load_screen)
     screen_system.current = "main"
-    while running:
-        screen.fill(pygame.Color("black"))
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
 
-                def gg(x):
-                    g.client.alive = False
-                    if g.session:
-                        g.session.ended = True
+    def end_app():
 
-                if g.session and g.session.mode == ONLINE and not g.session.ended:
-                    async def new():
-                        await g.client.refresh()
-                        return await g.client.surrender()
-                    g.client.add_action(new(), gg)
-                else:
-                    gg(1)
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                screen_system.get_click(pygame.Vector2(event.pos))
-            elif event.type == pygame.KEYDOWN:
-                screen_system.k_down(event)
-        pressed = pygame.key.get_pressed()
-        screen_system.check_pressed(pressed)
-        g.tick(clock.tick(FPS) / 1000)
-        g.flip()
-        pygame.display.flip()
+        def gg(x):
+            g.client.alive = False
+            if g.session:
+                g.session.ended = True
+
+        if g.session and g.session.mode == ONLINE and not g.session.ended:
+            async def new():
+                await g.client.refresh()
+                return await g.client.surrender()
+
+            g.client.add_action(new(), gg)
+        else:
+            gg(1)
+
+    try:
+        while running:
+            screen.fill(pygame.Color("black"))
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                    end_app()
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    screen_system.get_click(pygame.Vector2(event.pos))
+                elif event.type == pygame.KEYDOWN:
+                    screen_system.k_down(event)
+            pressed = pygame.key.get_pressed()
+            screen_system.check_pressed(pressed)
+            g.tick(clock.tick(FPS) / 1000)
+            g.flip()
+            pygame.display.flip()
+    except KeyboardInterrupt or Exception:
+        end_app()
 
 
 if __name__ == "__main__":
