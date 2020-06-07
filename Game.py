@@ -603,6 +603,7 @@ class Field:
                                            GRASS if -50 <= x <= 50 and -50 <= y <= 50 else WATER))
 
     def generate_map(self, seed, extra=None, players=2):
+        # Генерация игрового поля на основе seed'а и шумов Перлина
         start = datetime.datetime.now()
         if extra is None:
             extra = {"hexagons": []}
